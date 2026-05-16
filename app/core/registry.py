@@ -2,6 +2,10 @@ from functools import lru_cache
 
 from app.services.anonymization.base import AnonymizationService
 from app.services.anonymization.openai_pf import OpenAIPrivacyFilterService
+from app.services.fhir.base import FHIRStructuringService
+from app.services.fhir.llm_structurer import LLMFHIRStructurer
+from app.services.llm.base import LLMService
+from app.services.llm.gpt_oss import GPTOSS20BService
 from app.services.ocr.base import OCRService
 from app.services.ocr.doctr import DocTROCRService
 from app.services.pii_detection.base import PIIDetectionService
@@ -29,3 +33,13 @@ def get_pii_detection_service() -> PIIDetectionService:
 @lru_cache(maxsize=1)
 def get_transcription_service() -> TranscriptionService:
     return FasterWhisperTranscriptionService()
+
+
+@lru_cache(maxsize=1)
+def get_llm_service() -> LLMService:
+    return GPTOSS20BService()
+
+
+@lru_cache(maxsize=1)
+def get_fhir_structurer() -> FHIRStructuringService:
+    return LLMFHIRStructurer(get_llm_service())

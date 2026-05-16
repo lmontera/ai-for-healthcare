@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.routes import anonymize, pii, transcribe
+from app.api.routes import anonymize, fhir, pii, transcribe
 from app.whisperlive_server import start_whisperlive_background
 
 logging.basicConfig(
@@ -31,6 +31,7 @@ app = FastAPI(title="AI for Healthcare", version="0.1.0", lifespan=lifespan)
 app.include_router(anonymize.router)
 app.include_router(pii.router)
 app.include_router(transcribe.router)
+app.include_router(fhir.router)
 
 
 @app.get("/health")
