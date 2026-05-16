@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from typing import TypedDict
 
@@ -5,6 +6,8 @@ from langgraph.graph import END, START, StateGraph
 
 from app.core.registry import get_anonymization_service, get_ocr_service
 from app.core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AnonymizeState(TypedDict, total=False):
@@ -19,17 +22,17 @@ def _ocr_node(state: AnonymizeState) -> AnonymizeState:
     if settings.ocr_cache_enabled and cache_file.exists():
         cached = cache_file.read_text(encoding="utf-8")
         if cached.strip():
-            print(f"[ocr:cache-hit] {cache_file}", flush=True)
+            logger.info("[ocr] cache hit: %s (chars=%d)", cache_file, len(cached))
             return {"ocr_text": cached}
 
     ocr = get_ocr_service()
     ocr_text = ocr.extract_text(state["image_bytes"])
-    print(f"[ocr] {ocr_text}", flush=True)
+    logger.info("[ocr] extracted chars=%d", len(ocr_text))
 
     if settings.ocr_cache_enabled:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(ocr_text, encoding="utf-8")
-        print(f"[ocr:cache-write] {cache_file}", flush=True)
+        logger.info("[ocr] cache written: %s", cache_file)
 
     return {"ocr_text": ocr_text}
 
@@ -37,7 +40,11 @@ def _ocr_node(state: AnonymizeState) -> AnonymizeState:
 def _anonymize_node(state: AnonymizeState) -> AnonymizeState:
     anonymizer = get_anonymization_service()
     anonymized_text = anonymizer.anonymize(state["ocr_text"])
-    print(f"[anonymize] {anonymized_text}", flush=True)
+    logger.info(
+        "[anonymize] in_chars=%d out_chars=%d",
+        len(state["ocr_text"]),
+        len(anonymized_text),
+    )
     return {"anonymized_text": anonymized_text}
 
 

@@ -8,3 +8,11 @@ class AnonymizeRequest(BaseModel):
 class AnonymizeResponse(BaseModel):
     ocr_text: str
     anonymized_text: str
+
+
+class AnonymizeTextRequest(BaseModel):
+    text: str = Field(..., description="Plain text to anonymize")
+
+
+class AnonymizeTextResponse(BaseModel):
+    anonymized_text: str

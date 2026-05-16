@@ -34,9 +34,15 @@ class FasterWhisperTranscriptionService(TranscriptionService):
         logger.info("[whisper] model loaded in %.2fs", time.perf_counter() - t0)
 
     def transcribe(self, audio_bytes: bytes) -> Iterator[TranscriptionSegment]:
-        logger.info("[whisper] transcribe start: audio_bytes=%d", len(audio_bytes))
+        logger.info(
+            "[whisper] transcribe start: audio_bytes=%d language=it (forced)",
+            len(audio_bytes),
+        )
         t0 = time.perf_counter()
-        segments, info = self._model.transcribe(BytesIO(audio_bytes))
+        segments, info = self._model.transcribe(
+            BytesIO(audio_bytes),
+            language="it",
+        )
         logger.info(
             "[whisper] decode started: lang=%s prob=%.2f duration=%.2fs",
             getattr(info, "language", "?"),
