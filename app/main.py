@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,7 +16,10 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    start_whisperlive_background()
+    start_whisperlive_background(
+        host=os.getenv("WHISPERLIVE_HOST", "0.0.0.0"),
+        port=int(os.getenv("WHISPERLIVE_PORT", "9090")),
+    )
     yield
 
 

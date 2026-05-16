@@ -13,7 +13,8 @@ WORKDIR /build
 COPY requirements.txt .
 RUN pip install --prefix=/install \
         --extra-index-url https://download.pytorch.org/whl/cpu \
-        -r requirements.txt
+        -r requirements.txt \
+    && pip install --prefix=/install --no-deps whisper-live==0.8.0
 
 
 FROM python:3.11-slim AS runtime
@@ -39,6 +40,6 @@ COPY --from=builder /install /usr/local
 WORKDIR /app
 COPY app ./app
 
-EXPOSE 8000
+EXPOSE 8000 9090
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
