@@ -1,19 +1,25 @@
+import logging
+
 from transformers import pipeline
 
 from app.core.device import pipeline_device
 from app.schemas.pii import PIIEntity
 from app.services.pii_detection.base import PIIDetectionService
 
+logger = logging.getLogger(__name__)
+
 _MODEL_NAME = "OpenMed/OpenMed-PII-Italian-SnowflakeMed-Large-568M-v1"
 
 
 class OpenMedPIIDetectionService(PIIDetectionService):
     def __init__(self, model_name: str = _MODEL_NAME) -> None:
+        device = pipeline_device()
+        logger.info("[pii] device=%s", "GPU" if device >= 0 else "CPU")
         self._pipeline = pipeline(
             task="ner",
             model=model_name,
             aggregation_strategy="simple",
-            device=pipeline_device(),
+            device=device,
         )
 
     def detect(self, text: str) -> list[PIIEntity]:

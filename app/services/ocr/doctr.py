@@ -15,21 +15,15 @@ class DocTROCRService(OCRService):
         det_arch: str = "db_resnet50",
         reco_arch: str = "crnn_vgg16_bn",
     ) -> None:
-        predictor = ocr_predictor(
-            det_arch=det_arch,
-            reco_arch=reco_arch,
-            pretrained=True,
-        )
+        predictor = ocr_predictor(det_arch=det_arch, reco_arch=reco_arch, pretrained=True)
         if has_cuda():
             try:
-                import torch
-
                 predictor = predictor.cuda()
-                logger.info("[ocr] docTR predictor moved to CUDA")
-            except Exception as exc:
-                logger.warning("[ocr] failed to move docTR to CUDA (%s) — using CPU", exc)
+                logger.info("[ocr] device=GPU")
+            except Exception:
+                logger.info("[ocr] device=CPU")
         else:
-            logger.info("[ocr] docTR predictor running on CPU")
+            logger.info("[ocr] device=CPU")
         self._predictor = predictor
 
     def extract_text(self, image_bytes: bytes) -> str:

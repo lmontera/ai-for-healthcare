@@ -2,6 +2,7 @@ import base64
 import binascii
 import logging
 import time
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -21,7 +22,6 @@ router = APIRouter(prefix="/anonymize", tags=["anonymize"])
 
 @router.post("", response_model=AnonymizeResponse, status_code=status.HTTP_200_OK)
 def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
-    logger.info("[anonymize] document request received: b64_len=%d", len(payload.image_base64))
     try:
         image_bytes = base64.b64decode(payload.image_base64, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -30,14 +30,16 @@ def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
             detail="image_base64 is not a valid base64 string",
         ) from exc
 
-    logger.info("[anonymize] image decoded: bytes=%d", len(image_bytes))
+    start_dt = datetime.now()
     t0 = time.perf_counter()
+    logger.info("[anonymize] start=%s", start_dt.strftime("%H:%M:%S"))
+
     graph = get_anonymize_graph()
     result = graph.invoke({"image_bytes": image_bytes})
+
     logger.info(
-        "[anonymize] document done: ocr_chars=%d anon_chars=%d elapsed=%.2fs",
-        len(result["ocr_text"]),
-        len(result["anonymized_text"]),
+        "[anonymize] finish=%s elapsed=%.2fs",
+        datetime.now().strftime("%H:%M:%S"),
         time.perf_counter() - t0,
     )
 
@@ -49,14 +51,16 @@ def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
 
 @router.post("/text", response_model=AnonymizeTextResponse, status_code=status.HTTP_200_OK)
 def anonymize_text(payload: AnonymizeTextRequest) -> AnonymizeTextResponse:
-    logger.info("[anonymize:text] request received: chars=%d", len(payload.text))
+    start_dt = datetime.now()
     t0 = time.perf_counter()
+    logger.info("[anonymize:text] start=%s", start_dt.strftime("%H:%M:%S"))
+
     anonymizer = get_anonymization_service()
     anonymized = anonymizer.anonymize(payload.text)
+
     logger.info(
-        "[anonymize:text] done: in=%d out=%d elapsed=%.2fs",
-        len(payload.text),
-        len(anonymized),
+        "[anonymize:text] finish=%s elapsed=%.2fs",
+        datetime.now().strftime("%H:%M:%S"),
         time.perf_counter() - t0,
     )
     return AnonymizeTextResponse(anonymized_text=anonymized)

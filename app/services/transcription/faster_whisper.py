@@ -1,6 +1,7 @@
 import logging
 import time
 from collections.abc import Iterator
+from datetime import datetime
 from io import BytesIO
 
 from faster_whisper import WhisperModel
@@ -21,53 +22,27 @@ class FasterWhisperTranscriptionService(TranscriptionService):
         device: str | None = None,
         compute_type: str | None = None,
     ) -> None:
-        device = device or torch_device()
+        self._device = device or torch_device()
         compute_type = compute_type or whisper_compute_type()
-        logger.info(
-            "[whisper] loading model name=%s device=%s compute_type=%s",
-            model_name,
-            device,
-            compute_type,
-        )
-        t0 = time.perf_counter()
-        self._model = WhisperModel(model_name, device=device, compute_type=compute_type)
-        logger.info("[whisper] model loaded in %.2fs", time.perf_counter() - t0)
+        logger.info("[whisper] device=%s", self._device.upper())
+        self._model = WhisperModel(model_name, device=self._device, compute_type=compute_type)
 
     def transcribe(self, audio_bytes: bytes) -> Iterator[TranscriptionSegment]:
-        logger.info(
-            "[whisper] transcribe start: audio_bytes=%d language=it (forced)",
-            len(audio_bytes),
-        )
+        start_dt = datetime.now()
         t0 = time.perf_counter()
-        segments, info = self._model.transcribe(
-            BytesIO(audio_bytes),
-            language="it",
-        )
-        logger.info(
-            "[whisper] decode started: lang=%s prob=%.2f duration=%.2fs",
-            getattr(info, "language", "?"),
-            getattr(info, "language_probability", 0.0),
-            getattr(info, "duration", 0.0),
-        )
+        logger.info("[whisper] start=%s device=%s", start_dt.strftime("%H:%M:%S"), self._device.upper())
 
-        count = 0
+        segments, _info = self._model.transcribe(BytesIO(audio_bytes), language="it")
+
+        results: list[TranscriptionSegment] = []
         for s in segments:
-            count += 1
-            logger.info(
-                "[whisper] segment #%d [%.2fs -> %.2fs] %s",
-                count,
-                s.start,
-                s.end,
-                s.text.strip(),
-            )
-            yield TranscriptionSegment(
-                start=float(s.start),
-                end=float(s.end),
-                text=s.text,
-            )
+            seg = TranscriptionSegment(start=float(s.start), end=float(s.end), text=s.text)
+            results.append(seg)
+            yield seg
 
+        finish_dt = datetime.now()
         logger.info(
-            "[whisper] transcribe done: segments=%d elapsed=%.2fs",
-            count,
+            "[whisper] finish=%s elapsed=%.2fs",
+            finish_dt.strftime("%H:%M:%S"),
             time.perf_counter() - t0,
         )

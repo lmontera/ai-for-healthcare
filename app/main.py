@@ -9,9 +9,12 @@ from app.whisperlive_server import start_whisperlive_background
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+    format="%(asctime)s %(levelname)s | %(message)s",
     datefmt="%H:%M:%S",
 )
+
+for noisy in ("httpx", "httpcore", "faster_whisper", "transformers", "urllib3", "uvicorn.access"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 @asynccontextmanager

@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from datetime import datetime
 
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -13,21 +15,21 @@ router = APIRouter(prefix="/transcribe", tags=["transcribe"])
 
 @router.post("")
 async def transcribe(audio: UploadFile = File(...)) -> StreamingResponse:
-    logger.info(
-        "[transcribe] request received: filename=%s content_type=%s",
-        audio.filename,
-        audio.content_type,
-    )
     audio_bytes = await audio.read()
-    logger.info("[transcribe] audio loaded: bytes=%d", len(audio_bytes))
-
     service = get_transcription_service()
 
     def stream():
-        emitted = 0
+        start_dt = datetime.now()
+        t0 = time.perf_counter()
+        logger.info("[transcribe] start=%s", start_dt.strftime("%H:%M:%S"))
+
         for segment in service.transcribe(audio_bytes):
-            emitted += 1
             yield json.dumps(segment.model_dump()) + "\n"
-        logger.info("[transcribe] stream closed: emitted=%d segments", emitted)
+
+        logger.info(
+            "[transcribe] finish=%s elapsed=%.2fs",
+            datetime.now().strftime("%H:%M:%S"),
+            time.perf_counter() - t0,
+        )
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
