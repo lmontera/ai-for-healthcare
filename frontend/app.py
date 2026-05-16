@@ -757,6 +757,29 @@ startBtn.onclick = async () => {
   startBtn.disabled = true;
   segments = [];
   render();
+
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const origin = window.location.origin;
+    transcriptEl.innerHTML = `
+      <div class="empty" style="text-align:left; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:18px;">
+        <div style="font-weight:700; font-size:15px; margin-bottom:8px;">🔒 Microfono non accessibile</div>
+        <div style="color:#475569; font-size:13px; line-height:1.6;">
+          Il browser blocca <code>getUserMedia</code> perché stai aprendo Streamlit da
+          <code>${origin}</code>, che non è un contesto sicuro (serve <b>https://</b> o <b>localhost</b>).
+          <br/><br/>
+          <b>Soluzioni:</b>
+          <ul style="margin:6px 0 0 18px; padding:0;">
+            <li>SSH port-forward: <code>ssh -L 8501:localhost:8501 -L 9090:localhost:9090 user@server</code> e apri <code>http://localhost:8501</code></li>
+            <li>Servi Streamlit dietro HTTPS (e usa <code>wss://</code> per WhisperLive)</li>
+            <li>Solo dev/Chrome: <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></li>
+          </ul>
+        </div>
+      </div>`;
+    setStatus("Contesto non sicuro", "");
+    startBtn.disabled = false;
+    return;
+  }
+
   setStatus("Apro microfono...", "active");
   try {
     stream = await navigator.mediaDevices.getUserMedia({
