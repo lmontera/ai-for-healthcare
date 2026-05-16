@@ -26,9 +26,9 @@ def start_whisperlive_background(host: str = "0.0.0.0", port: int = 9090) -> Non
 def _run(host: str, port: int) -> None:
     from whisper_live.server import TranscriptionServer
 
-    logger.info("[whisperlive] starting server on %s:%d", host, port)
+    logger.info("[whisperlive] starting server on %s:%d (single_model=True)", host, port)
     try:
         server = TranscriptionServer()
-        server.run(host, port=port, backend="faster_whisper")
+        server.run(host, port=port, backend="faster_whisper", single_model=True)
     except Exception:
         logger.exception("[whisperlive] server crashed")

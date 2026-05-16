@@ -793,7 +793,7 @@ startBtn.onclick = async () => {
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   source = audioCtx.createMediaStreamSource(stream);
-  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor = audioCtx.createScriptProcessor(2048, 1, 1);
   source.connect(processor);
   processor.connect(audioCtx.destination);
 
@@ -808,6 +808,10 @@ startBtn.onclick = async () => {
       task: "transcribe",
       model: MODEL_NAME,
       use_vad: true,
+      same_output_threshold: 5,
+      send_last_n_segments: 10,
+      no_speech_thresh: 0.45,
+      initial_prompt: "Visita oculistica. Anamnesi e referto in italiano. Termini: visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, occlusione venosa, edema maculare, neovascolarizzazione, biomicroscopia, oftalmoscopia, OCT, fluorangiografia, angio-OCT, campo visivo, ecografia oculare, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo.",
       max_clients: 4,
       max_connection_time: 600
     };
