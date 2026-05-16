@@ -1,0 +1,50 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-for-healthcare:latest
+    container_name: ai-healthcare-api
+    restart: unless-stopped
+    mem_limit: 8g
+    mem_reservation: 4g
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+      - hf-cache:/models
+      - doctr-cache:/root/.cache/doctr
+    environment:
+      - HF_HOME=/models
+      - TRANSFORMERS_CACHE=/models
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - OCR_CACHE_ENABLED=${OCR_CACHE_ENABLED:-false}
+      - OCR_CACHE_FILE=/app/data/ocr_cache.txt
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ai-for-healthcare-frontend:latest
+    container_name: ai-healthcare-frontend
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+      - API_TIMEOUT=300
+    depends_on:
+      - api
+
+volumes:
+  hf-cache:
+  doctr-cache:

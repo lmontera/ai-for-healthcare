@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+transformers==5.8.1
+huggingface_hub==1.5.0
+hf_transfer==0.1.8
+torch==2.5.1
+accelerate==1.1.1
+safetensors==0.4.5
+sentencepiece==0.2.0
+langchain-core==0.3.21
+langgraph==0.2.53
+pillow==11.0.0
+python-doctr[torch]==1.0.1
+faster-whisper==1.1.1
+python-multipart==0.0.20
+whisper-live==0.8.0
