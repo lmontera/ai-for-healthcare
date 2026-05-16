@@ -40,10 +40,9 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - API_URL=http://api:8000
-      - API_TIMEOUT=300
-    depends_on:
-      - api
+      - API_URL=${API_URL:-http://api:8000}
+      - API_TIMEOUT=${API_TIMEOUT:-300}
+      - WHISPERLIVE_URL=${WHISPERLIVE_URL:-ws://localhost:9090}
 
 volumes:
   hf-cache:
