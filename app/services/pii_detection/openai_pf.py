@@ -1,5 +1,6 @@
 from transformers import pipeline
 
+from app.core.device import pipeline_device
 from app.schemas.pii import PIIEntity
 from app.services.pii_detection.base import PIIDetectionService
 
@@ -12,6 +13,7 @@ class OpenAIPrivacyFilterDetectionService(PIIDetectionService):
             task="token-classification",
             model=model_name,
             aggregation_strategy="simple",
+            device=pipeline_device(),
         )
 
     def detect(self, text: str) -> list[PIIEntity]:

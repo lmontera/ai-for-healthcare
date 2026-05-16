@@ -5,6 +5,7 @@ from io import BytesIO
 
 from faster_whisper import WhisperModel
 
+from app.core.device import torch_device, whisper_compute_type
 from app.schemas.transcription import TranscriptionSegment
 from app.services.transcription.base import TranscriptionService
 
@@ -17,9 +18,11 @@ class FasterWhisperTranscriptionService(TranscriptionService):
     def __init__(
         self,
         model_name: str = _MODEL_NAME,
-        device: str = "cpu",
-        compute_type: str = "int8",
+        device: str | None = None,
+        compute_type: str | None = None,
     ) -> None:
+        device = device or torch_device()
+        compute_type = compute_type or whisper_compute_type()
         logger.info(
             "[whisper] loading model name=%s device=%s compute_type=%s",
             model_name,

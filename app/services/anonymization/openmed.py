@@ -1,5 +1,6 @@
 from transformers import pipeline
 
+from app.core.device import pipeline_device
 from app.services.anonymization.base import AnonymizationService
 
 _MODEL_NAME = "OpenMed/privacy-filter-multilingual"
@@ -12,6 +13,7 @@ class OpenMedPrivacyFilterService(AnonymizationService):
             model=model_name,
             aggregation_strategy="simple",
             trust_remote_code=True,
+            device=pipeline_device(),
         )
 
     def anonymize(self, text: str) -> str:

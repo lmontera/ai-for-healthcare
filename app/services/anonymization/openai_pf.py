@@ -1,5 +1,6 @@
 from transformers import pipeline
 
+from app.core.device import pipeline_device
 from app.services.anonymization.base import AnonymizationService
 
 _MODEL_NAME = "openai/privacy-filter"
@@ -11,6 +12,7 @@ class OpenAIPrivacyFilterService(AnonymizationService):
             task="token-classification",
             model=model_name,
             aggregation_strategy="simple",
+            device=pipeline_device(),
         )
 
     def anonymize(self, text: str) -> str:
