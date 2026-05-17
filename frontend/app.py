@@ -49,10 +49,10 @@ def _highlight(text: str, entities: list[dict]) -> str:
         fg = _text_color(ent["label"])
         chunk = rendered[start:end]
         replacement = (
-            f'<mark style="background-color:{bg};color:{fg};padding:3px 8px;'
-            f'border-radius:6px;font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,0.06);">'
-            f'{chunk}<span style="margin-left:6px;font-size:0.65em;'
-            f'opacity:0.85;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">'
+            f'<mark style="background-color:{bg};color:{fg};padding:2px 6px;'
+            f'border-radius:3px;font-weight:500;">'
+            f'{chunk}<span style="margin-left:6px;font-size:0.7em;'
+            f'opacity:0.75;text-transform:uppercase;letter-spacing:0.4px;font-weight:600;">'
             f'{ent["label"].replace("private_", "")}</span></mark>'
         )
         rendered = f"{rendered[:start]}{replacement}{rendered[end:]}"
@@ -69,7 +69,7 @@ def _check_health() -> tuple[bool, str]:
 
 st.set_page_config(
     page_title="AI for Healthcare",
-    page_icon="🩺",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -78,214 +78,350 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-  /* Global — broader selectors to survive Streamlit DOM changes */
   html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
-    background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%) !important;
+    background: #fafafa !important;
   }
   .block-container {
-    padding-top: 2rem !important;
-    max-width: 1200px;
+    padding-top: 2.5rem !important;
+    padding-bottom: 4rem !important;
+    max-width: 1100px;
   }
 
-  /* Sidebar — multiple selector variants */
   section[data-testid="stSidebar"],
-  [data-testid="stSidebar"] > div,
-  aside[aria-label="sidebar"] {
-    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
+  [data-testid="stSidebar"] > div {
+    background: #ffffff !important;
+    border-right: 1px solid #e5e7eb;
   }
-  section[data-testid="stSidebar"] *,
-  [data-testid="stSidebar"] * {
-    color: #e2e8f0 !important;
+  section[data-testid="stSidebar"] * {
+    color: #1f2937 !important;
   }
 
-  /* Hide default Streamlit chrome */
   #MainMenu { visibility: hidden; }
   footer { visibility: hidden; }
+  header[data-testid="stHeader"] { background: transparent; }
 
-  /* Sidebar radio overrides */
+  /* Sidebar layout */
+  section[data-testid="stSidebar"] .block-container {
+    padding-top: 1.75rem !important;
+    padding-left: 1.1rem !important;
+    padding-right: 1.1rem !important;
+  }
+
+  /* Sidebar nav (radio) */
+  section[data-testid="stSidebar"] .stRadio > div {
+    gap: 1px;
+  }
   section[data-testid="stSidebar"] .stRadio label {
-    background: rgba(255,255,255,0.04);
-    padding: 10px 14px;
-    border-radius: 10px;
-    margin-bottom: 6px;
-    border: 1px solid rgba(255,255,255,0.06);
-    transition: all 0.2s ease;
+    position: relative;
+    background: transparent;
+    padding: 7px 10px 7px 14px;
+    border-radius: 4px;
+    margin: 0;
+    border: none;
     cursor: pointer;
+    font-size: 0.875rem;
+    color: #4b5563 !important;
+    transition: background 0.12s ease, color 0.12s ease;
   }
   section[data-testid="stSidebar"] .stRadio label:hover {
-    background: rgba(99,102,241,0.18);
-    border-color: rgba(99,102,241,0.4);
-    transform: translateX(2px);
+    background: #f3f4f6;
+    color: #111827 !important;
+  }
+  /* Hide the default radio dot */
+  section[data-testid="stSidebar"] .stRadio label > div:first-child {
+    display: none !important;
+  }
+  /* Active item: left bar + bold text + light bg */
+  section[data-testid="stSidebar"] .stRadio label:has(input:checked) {
+    background: #f3f4f6;
+    color: #111827 !important;
+    font-weight: 600;
+  }
+  section[data-testid="stSidebar"] .stRadio label:has(input:checked)::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: #111827;
+    border-radius: 2px;
+  }
+  section[data-testid="stSidebar"] .stRadio label p {
+    font-size: 0.875rem !important;
+    color: inherit !important;
   }
 
-  /* Headings */
-  h1 {
-    background: linear-gradient(90deg, #4f46e5 0%, #06b6d4 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-weight: 800 !important;
-    letter-spacing: -0.02em;
+  /* Sidebar section heading */
+  .hc-nav-heading {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #9ca3af;
+    font-weight: 600;
+    margin: 18px 0 6px 14px;
   }
 
-  /* Cards */
-  .hc-card {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 22px 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(15,23,42,0.06);
-    border: 1px solid rgba(226,232,240,0.8);
-    margin-bottom: 16px;
+  /* Brand mark */
+  .hc-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 4px 18px 4px;
   }
-  .hc-card-title {
+  .hc-brand-mark {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: #111827;
+    color: #ffffff;
+    display: flex; align-items: center; justify-content: center;
     font-size: 0.78rem;
     font-weight: 700;
+    letter-spacing: -0.02em;
+    flex-shrink: 0;
+  }
+  .hc-brand-name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1.1;
+  }
+  .hc-brand-tag {
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+
+  /* Sidebar meta block */
+  .hc-meta {
+    padding: 10px 12px;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    margin: 4px 0 8px 0;
+  }
+  .hc-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.74rem;
+  }
+  .hc-meta-label {
+    color: #6b7280;
+    font-weight: 500;
+  }
+  .hc-meta-value {
+    color: #111827;
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hc-meta-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .hc-meta-dot.online { background: #16a34a; }
+  .hc-meta-dot.offline { background: #dc2626; }
+
+  /* Sidebar footer */
+  .hc-foot {
+    margin-top: 28px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 0.68rem;
+    color: #9ca3af;
+    line-height: 1.5;
+  }
+  .hc-foot strong {
+    color: #6b7280;
+    font-weight: 600;
+  }
+
+  h1, h2, h3 {
+    color: #111827 !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+  }
+  h1 {
+    font-size: 1.6rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  .hc-subtitle {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .hc-card {
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 18px 20px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 14px;
+  }
+  .hc-card-title {
+    font-size: 0.72rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #64748b;
+    letter-spacing: 0.06em;
+    color: #6b7280;
     margin-bottom: 10px;
   }
 
-  /* Metric chips */
   .hc-metric {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: 6px;
+    padding: 4px 10px;
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 999px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #334155;
-    margin: 4px 6px 4px 0;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #374151;
+    margin: 3px 4px 3px 0;
   }
   .hc-metric .dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
     display: inline-block;
   }
 
-  /* Status pill */
   .hc-status {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 12px;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid;
   }
-  .hc-status.online { background: rgba(16,185,129,0.15); color: #059669; }
-  .hc-status.offline { background: rgba(239,68,68,0.15); color: #dc2626; }
-  .hc-status .pulse {
-    width: 8px; height: 8px; border-radius: 50%;
+  .hc-status.online { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+  .hc-status.offline { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .hc-status .dot {
+    width: 6px; height: 6px; border-radius: 50%;
     background: currentColor;
-    box-shadow: 0 0 0 0 currentColor;
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
-    70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
-    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
   }
 
-  /* Buttons */
   .stButton > button {
-    border-radius: 10px;
-    font-weight: 600;
-    padding: 10px 22px;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
+    border-radius: 5px;
+    font-weight: 500;
+    padding: 6px 16px;
+    font-size: 0.88rem;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #374151;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .stButton > button:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
   }
   .stButton > button[kind="primary"] {
-    background: linear-gradient(90deg, #4f46e5 0%, #6366f1 100%);
-    border: none;
-    box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+    background: #1f2937;
+    border-color: #1f2937;
+    color: #ffffff;
   }
   .stButton > button[kind="primary"]:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(79,70,229,0.4);
+    background: #111827;
+    border-color: #111827;
   }
 
-  /* Inputs */
   .stTextArea textarea, .stTextInput input {
-    border-radius: 10px !important;
-    border: 1px solid #e2e8f0 !important;
+    border-radius: 5px !important;
+    border: 1px solid #d1d5db !important;
     font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.9rem !important;
   }
   .stTextArea textarea:focus, .stTextInput input:focus {
-    border-color: #6366f1 !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+    border-color: #6b7280 !important;
+    box-shadow: 0 0 0 1px #6b7280 !important;
   }
 
-  /* File uploader */
   [data-testid="stFileUploader"] section {
-    border: 2px dashed #cbd5e1;
-    border-radius: 14px;
+    border: 1px dashed #d1d5db;
+    border-radius: 6px;
     background: #ffffff;
-    transition: all 0.2s ease;
   }
   [data-testid="stFileUploader"] section:hover {
-    border-color: #6366f1;
-    background: #f5f3ff;
+    border-color: #9ca3af;
+    background: #fafafa;
   }
 
-  /* Tabs */
   .stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: #ffffff;
-    padding: 6px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
+    gap: 0;
+    background: transparent;
+    padding: 0;
+    border-bottom: 1px solid #e5e7eb;
+    border-radius: 0;
   }
   .stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
+    border-radius: 0;
     padding: 8px 16px;
-    font-weight: 600;
-    color: #64748b;
+    font-weight: 500;
+    font-size: 0.88rem;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
   }
   .stTabs [aria-selected="true"] {
-    background: linear-gradient(90deg, #4f46e5 0%, #6366f1 100%) !important;
-    color: #fff !important;
+    background: transparent !important;
+    color: #111827 !important;
+    border-bottom: 2px solid #111827 !important;
   }
 
-  /* Transcript box */
   .hc-segment {
-    padding: 10px 14px;
-    background: #f8fafc;
-    border-left: 3px solid #6366f1;
-    border-radius: 0 8px 8px 0;
-    margin-bottom: 8px;
-    font-size: 0.92rem;
+    padding: 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-left: 2px solid #6b7280;
+    border-radius: 0 3px 3px 0;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+    color: #1f2937;
   }
   .hc-segment .ts {
     font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
-    color: #6366f1;
-    font-weight: 700;
+    font-size: 0.72rem;
+    color: #6b7280;
+    font-weight: 600;
     margin-right: 10px;
   }
 
-  /* Highlighted text container */
   .hc-text-output {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 18px 20px;
-    line-height: 1.9;
-    font-size: 0.95rem;
-    color: #1e293b;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 16px 18px;
+    line-height: 1.8;
+    font-size: 0.92rem;
+    color: #1f2937;
   }
 
-  /* Hero header */
-  .hc-hero {
-    padding: 8px 0 24px 0;
-    border-bottom: 1px solid #e2e8f0;
-    margin-bottom: 28px;
+  .hc-empty {
+    background: #ffffff;
+    border: 1px dashed #e5e7eb;
+    border-radius: 6px;
+    padding: 48px 20px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.9rem;
   }
-  .hc-hero .subtitle {
-    color: #64748b;
-    font-size: 1.05rem;
-    margin-top: -8px;
+
+  .hc-note {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #9ca3af;
+    border-radius: 0 4px 4px 0;
+    padding: 10px 14px;
+    color: #4b5563;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
   }
 </style>
 """,
@@ -296,12 +432,11 @@ st.markdown(
 with st.sidebar:
     st.markdown(
         """
-<div style="padding: 8px 0 18px 0;">
-  <div style="font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em;">
-    🩺 AI for Healthcare
-  </div>
-  <div style="font-size: 0.78rem; opacity: 0.65; margin-top: 4px;">
-    Privacy & speech toolkit
+<div class="hc-brand">
+  <div class="hc-brand-mark">AI</div>
+  <div>
+    <div class="hc-brand-name">AI for Healthcare</div>
+    <div class="hc-brand-tag">Privacy &amp; speech toolkit</div>
   </div>
 </div>
 """,
@@ -310,35 +445,42 @@ with st.sidebar:
 
     ok, info = _check_health()
     status_class = "online" if ok else "offline"
-    status_text = "API online" if ok else "API offline"
+    status_label = "Online" if ok else "Offline"
     st.markdown(
-        f'<div class="hc-status {status_class}"><span class="pulse"></span>{status_text}</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div style="font-size: 0.72rem; opacity: 0.55; margin: 8px 0 18px 0; font-family: ui-monospace, monospace;">{API_URL}</div>',
+        f"""
+<div class="hc-meta">
+  <div class="hc-meta-row">
+    <span class="hc-meta-label"><span class="hc-meta-dot {status_class}"></span>API {status_label}</span>
+    <span class="hc-meta-value" title="{API_URL}">{API_URL}</span>
+  </div>
+</div>
+""",
         unsafe_allow_html=True,
     )
     if not ok:
         st.caption(info)
 
-    st.markdown(
-        '<div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 8px;">Servizi</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="hc-nav-heading">Servizi</div>', unsafe_allow_html=True)
 
     page = st.radio(
         "Servizio",
-        ["📄 Anonymize Document", "🔍 PII Detect", "🎙️ Transcription", "⚡ Realtime STT"],
+        [
+            "Anonimizza documento",
+            "Rilevamento PII",
+            "Trascrizione",
+            "Trascrizione live",
+            "Strutturazione FHIR",
+            "Classificazione immagine",
+        ],
         index=0,
         label_visibility="collapsed",
     )
 
-    st.markdown("<div style='flex:1; min-height: 40px;'></div>", unsafe_allow_html=True)
     st.markdown(
         """
-<div style="position: absolute; bottom: 20px; left: 20px; right: 20px; font-size: 0.7rem; opacity: 0.4; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-  FastAPI · LangGraph · WhisperLive
+<div class="hc-foot">
+  <div><strong>Stack</strong></div>
+  <div>FastAPI · LangGraph · WhisperLive</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -347,20 +489,19 @@ with st.sidebar:
 
 def _hero(title: str, subtitle: str):
     st.markdown(
-        f'<div class="hc-hero"><h1 style="margin-bottom:4px;">{title}</h1>'
-        f'<div class="subtitle">{subtitle}</div></div>',
+        f'<h1>{title}</h1><div class="hc-subtitle">{subtitle}</div>',
         unsafe_allow_html=True,
     )
 
 
-if page == "📄 Anonymize Document":
+if page == "Anonimizza documento":
     _hero(
-        "Anonymize Document",
-        "Carica un'immagine → OCR (docTR) → anonimizzazione (openai/privacy-filter)",
+        "Anonimizza documento",
+        "OCR (docTR) e anonimizzazione (openai/privacy-filter) su immagini di documenti clinici.",
     )
 
     uploaded = st.file_uploader(
-        "Trascina un documento qui o sfoglia",
+        "Trascina un documento o sfoglia",
         type=["png", "jpg", "jpeg"],
         label_visibility="visible",
     )
@@ -369,14 +510,14 @@ if page == "📄 Anonymize Document":
         col1, col2 = st.columns([1, 1], gap="large")
 
         with col1:
-            st.markdown('<div class="hc-card-title">📷 Documento</div>', unsafe_allow_html=True)
+            st.markdown('<div class="hc-card-title">Documento</div>', unsafe_allow_html=True)
             st.image(uploaded, use_container_width=True)
-            run = st.button("🚀 Esegui anonimizzazione", type="primary", use_container_width=True)
+            run = st.button("Esegui anonimizzazione", type="primary", use_container_width=True)
 
         with col2:
             if run:
                 image_b64 = base64.b64encode(uploaded.getvalue()).decode("utf-8")
-                with st.spinner("🧠 OCR + anonimizzazione in corso..."):
+                with st.spinner("Elaborazione in corso..."):
                     try:
                         r = requests.post(
                             f"{API_URL}/anonymize",
@@ -388,7 +529,7 @@ if page == "📄 Anonymize Document":
                     except requests.RequestException as exc:
                         st.error(f"Errore API: {exc}")
                     else:
-                        tab1, tab2 = st.tabs(["🔒 Anonimizzato", "📝 OCR grezzo"])
+                        tab1, tab2 = st.tabs(["Anonimizzato", "OCR grezzo"])
                         with tab1:
                             st.text_area(
                                 "Output",
@@ -397,7 +538,7 @@ if page == "📄 Anonymize Document":
                                 label_visibility="collapsed",
                             )
                             st.download_button(
-                                "⬇️ Scarica testo anonimizzato",
+                                "Scarica testo anonimizzato",
                                 data["anonymized_text"],
                                 file_name="anonymized.txt",
                                 use_container_width=True,
@@ -411,27 +552,20 @@ if page == "📄 Anonymize Document":
                             )
             else:
                 st.markdown(
-                    '<div class="hc-card" style="text-align:center; color:#94a3b8; padding: 60px 20px;">'
-                    '<div style="font-size: 2.5rem; margin-bottom: 8px;">✨</div>'
-                    "<div>Premi <b>Esegui anonimizzazione</b> per avviare la pipeline OCR → anonymization</div>"
-                    "</div>",
+                    '<div class="hc-empty">Premi <b>Esegui anonimizzazione</b> per avviare la pipeline OCR e anonimizzazione.</div>',
                     unsafe_allow_html=True,
                 )
     else:
         st.markdown(
-            '<div class="hc-card" style="text-align:center; color:#94a3b8; padding: 70px 20px;">'
-            '<div style="font-size: 3rem; margin-bottom: 12px;">📄</div>'
-            '<div style="font-size: 1.05rem; color:#475569; font-weight: 600;">Nessun documento caricato</div>'
-            '<div style="font-size: 0.9rem; margin-top: 4px;">Carica un PNG o JPEG per iniziare</div>'
-            "</div>",
+            '<div class="hc-empty">Nessun documento caricato. Carica un PNG o JPEG per iniziare.</div>',
             unsafe_allow_html=True,
         )
 
 
-elif page == "🔍 PII Detect":
+elif page == "Rilevamento PII":
     _hero(
-        "PII Detect",
-        "Testo libero → entità PII rilevate (OpenMed Italian medical model)",
+        "Rilevamento PII",
+        "Estrazione di entità sensibili da testo libero (OpenMed Italian medical model).",
     )
 
     text = st.text_area(
@@ -443,7 +577,7 @@ elif page == "🔍 PII Detect":
     col_a, col_b = st.columns([1, 4])
     with col_a:
         run = st.button(
-            "🔍 Analizza",
+            "Analizza",
             type="primary",
             disabled=not text.strip(),
             use_container_width=True,
@@ -486,7 +620,7 @@ elif page == "🔍 PII Detect":
                         unsafe_allow_html=True,
                     )
 
-                tab1, tab2 = st.tabs(["🖍️ Testo evidenziato", "📊 Dettaglio entità"])
+                tab1, tab2 = st.tabs(["Testo evidenziato", "Dettaglio entità"])
                 with tab1:
                     st.markdown(
                         f'<div class="hc-text-output">{_highlight(text, entities)}</div>',
@@ -515,25 +649,21 @@ elif page == "🔍 PII Detect":
                         st.info("Nessuna entità rilevata.")
 
 
-elif page == "🎙️ Transcription":
+elif page == "Trascrizione":
     _hero(
-        "Transcription",
-        "Registra audio → trascrizione streaming (medwhisper-large-v3 italiano)",
+        "Trascrizione",
+        "Trascrizione audio streaming con medwhisper-large-v3 italiano.",
     )
 
     st.markdown(
-        '<div class="hc-card" style="background: linear-gradient(90deg, #eff6ff 0%, #ede9fe 100%); '
-        'border-color: #c7d2fe; color: #4338ca;">'
-        '💡 <b>Suggerimento:</b> su CPU large-v3 va più lento del realtime. I segmenti '
-        "compaiono progressivamente man mano che il modello li produce."
-        "</div>",
+        '<div class="hc-note">Su CPU large-v3 è più lento del realtime. I segmenti compaiono progressivamente.</div>',
         unsafe_allow_html=True,
     )
 
-    audio = st.audio_input("🎙️ Registra audio")
+    audio = st.audio_input("Registra audio")
 
     if audio is not None:
-        run = st.button("✨ Trascrivi", type="primary", use_container_width=False)
+        run = st.button("Trascrivi", type="primary", use_container_width=False)
         if run:
             segments_acc: list[dict] = []
             placeholder = st.empty()
@@ -541,8 +671,7 @@ elif page == "🎙️ Transcription":
             status_holder = st.empty()
 
             status_holder.markdown(
-                '<div class="hc-status online" style="background: rgba(99,102,241,0.15); color:#4f46e5;">'
-                '<span class="pulse"></span>Trascrizione in corso...</div>',
+                '<div class="hc-status online"><span class="dot"></span>Trascrizione in corso</div>',
                 unsafe_allow_html=True,
             )
 
@@ -567,11 +696,11 @@ elif page == "🎙️ Transcription":
                         )
                         placeholder.markdown(
                             f'<div class="hc-card"><div class="hc-card-title">'
-                            f"🎬 Segmenti ({len(segments_acc)})</div>{segments_html}</div>",
+                            f"Segmenti ({len(segments_acc)})</div>{segments_html}</div>",
                             unsafe_allow_html=True,
                         )
                         full_text_holder.text_area(
-                            "📄 Testo completo",
+                            "Testo completo",
                             " ".join(s["text"].strip() for s in segments_acc),
                             height=160,
                         )
@@ -579,30 +708,26 @@ elif page == "🎙️ Transcription":
                 status_holder.error(f"Errore API: {exc}")
             else:
                 status_holder.success(
-                    f"✅ Trascrizione completata · {len(segments_acc)} segmenti"
+                    f"Trascrizione completata · {len(segments_acc)} segmenti"
                 )
                 if segments_acc:
                     st.download_button(
-                        "⬇️ Scarica trascrizione",
+                        "Scarica trascrizione",
                         " ".join(s["text"].strip() for s in segments_acc),
                         file_name="transcript.txt",
                     )
 
 
-elif page == "⚡ Realtime STT":
+elif page == "Trascrizione live":
     import streamlit.components.v1 as components
 
     _hero(
-        "Realtime STT",
-        "WhisperLive + medwhisper-large-v3 italiano — streaming WebSocket live",
+        "Trascrizione live",
+        "WhisperLive con medwhisper-large-v3 italiano via WebSocket.",
     )
 
     st.markdown(
-        '<div class="hc-card" style="background: linear-gradient(90deg, #fef3c7 0%, #fed7aa 100%); '
-        'border-color: #fcd34d; color: #92400e;">'
-        '⚠️ <b>Attenzione:</b> su CPU con large-v3 i parziali hanno qualche secondo di lag. '
-        "Il primo avvio carica il modello (può richiedere alcuni minuti)."
-        "</div>",
+        '<div class="hc-note">Su CPU con large-v3 i parziali hanno qualche secondo di lag. Il primo avvio carica il modello (può richiedere alcuni minuti).</div>',
         unsafe_allow_html=True,
     )
 
@@ -618,110 +743,103 @@ elif page == "⚡ Realtime STT":
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     padding: 0; margin: 0;
     background: transparent;
+    color: #1f2937;
   }
   .panel {
     background: #ffffff;
-    border-radius: 16px;
-    padding: 20px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(15,23,42,0.06);
+    border-radius: 6px;
+    padding: 18px;
+    border: 1px solid #e5e7eb;
   }
   .controls {
-    display: flex; gap: 10px; align-items: center; margin-bottom: 16px;
+    display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
     flex-wrap: wrap;
   }
   button {
-    padding: 10px 18px;
-    font-size: 14px;
-    font-weight: 600;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 5px;
     background: #ffffff;
-    color: #334155;
-    transition: all 0.2s ease;
-    display: inline-flex; align-items: center; gap: 8px;
+    color: #374151;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
   button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    background: #f9fafb;
+    border-color: #9ca3af;
   }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
   button.primary {
-    background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
-    color: #fff; border: none;
-    box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+    background: #1f2937;
+    color: #ffffff;
+    border-color: #1f2937;
   }
-  button.stop {
-    background: linear-gradient(90deg, #475569 0%, #334155 100%);
-    color: #fff; border: none;
+  button.primary:hover:not(:disabled) {
+    background: #111827;
+    border-color: #111827;
   }
   #status {
-    display: inline-flex; align-items: center; gap: 8px;
-    color: #475569; font-size: 13px; font-weight: 500;
-    padding: 6px 12px;
-    background: #f1f5f9;
-    border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #6b7280; font-size: 12px; font-weight: 500;
+    padding: 3px 10px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
   }
   #status .dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #94a3b8;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #9ca3af;
   }
-  #status.active .dot { background: #10b981; animation: pulse 1.5s infinite; }
-  #status.recording .dot { background: #ef4444; animation: pulse 1s infinite; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.3); }
-  }
+  #status.active .dot { background: #6b7280; }
+  #status.recording .dot { background: #dc2626; }
   #transcript {
-    padding: 16px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    padding: 14px;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
     min-height: 260px;
     max-height: 380px;
     overflow-y: auto;
     font-family: ui-sans-serif, system-ui, sans-serif;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.6;
-    color: #1e293b;
+    color: #1f2937;
   }
   .segment {
-    padding: 8px 12px;
+    padding: 7px 11px;
     background: #ffffff;
-    border-left: 3px solid #6366f1;
-    border-radius: 0 8px 8px 0;
-    margin-bottom: 8px;
+    border: 1px solid #e5e7eb;
+    border-left: 2px solid #6b7280;
+    border-radius: 0 3px 3px 0;
+    margin-bottom: 6px;
   }
   .segment .ts {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    color: #6366f1;
-    font-weight: 700;
+    font-size: 10.5px;
+    color: #6b7280;
+    font-weight: 600;
     display: block;
     margin-bottom: 2px;
   }
   .empty {
     text-align: center;
-    color: #94a3b8;
+    color: #9ca3af;
     padding: 60px 20px;
-    font-size: 14px;
+    font-size: 13px;
   }
-  .empty .icon { font-size: 2rem; margin-bottom: 8px; }
 </style>
 </head>
 <body>
 <div class="panel">
   <div class="controls">
-    <button id="start" class="primary">● Start recording</button>
-    <button id="stop" class="stop" disabled>■ Stop</button>
+    <button id="start" class="primary">Avvia registrazione</button>
+    <button id="stop" disabled>Ferma</button>
     <span id="status"><span class="dot"></span><span id="status-text">Pronto</span></span>
   </div>
   <div id="transcript">
-    <div class="empty">
-      <div class="icon">🎤</div>
-      <div>Premi <b>Start recording</b> per iniziare la trascrizione in tempo reale</div>
-    </div>
+    <div class="empty">Premi <b>Avvia registrazione</b> per iniziare la trascrizione in tempo reale.</div>
   </div>
 </div>
 <script>
@@ -744,7 +862,7 @@ function setStatus(t, cls) {
 }
 function render() {
   if (segments.length === 0) {
-    transcriptEl.innerHTML = '<div class="empty"><div class="icon">🎤</div><div>In ascolto...</div></div>';
+    transcriptEl.innerHTML = '<div class="empty">In ascolto...</div>';
     return;
   }
   transcriptEl.innerHTML = segments.map(s =>
@@ -761,9 +879,9 @@ startBtn.onclick = async () => {
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     const origin = window.location.origin;
     transcriptEl.innerHTML = `
-      <div class="empty" style="text-align:left; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:18px;">
-        <div style="font-weight:700; font-size:15px; margin-bottom:8px;">🔒 Microfono non accessibile</div>
-        <div style="color:#475569; font-size:13px; line-height:1.6;">
+      <div class="empty" style="text-align:left; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:5px; padding:16px;">
+        <div style="font-weight:600; font-size:14px; margin-bottom:8px;">Microfono non accessibile</div>
+        <div style="color:#4b5563; font-size:12.5px; line-height:1.6;">
           Il browser blocca <code>getUserMedia</code> perché stai aprendo Streamlit da
           <code>${origin}</code>, che non è un contesto sicuro (serve <b>https://</b> o <b>localhost</b>).
           <br/><br/>
@@ -816,7 +934,7 @@ startBtn.onclick = async () => {
       max_connection_time: 600
     };
     ws.send(JSON.stringify(config));
-    setStatus("Caricamento modello (può richiedere minuti)...", "active");
+    setStatus("Caricamento modello...", "active");
     stopBtn.disabled = false;
   };
 
@@ -824,7 +942,7 @@ startBtn.onclick = async () => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.message === "SERVER_READY") {
-      setStatus("Registrazione · parla in italiano", "recording");
+      setStatus("Registrazione attiva", "recording");
     } else if (msg.message === "DISCONNECT") {
       setStatus("Disconnesso", "");
     } else if (msg.segments) {
@@ -859,3 +977,161 @@ stopBtn.onclick = () => {
 """.replace("__WS_URL__", ws_url).replace("__MODEL_NAME__", model_name)
 
     components.html(html, height=520, scrolling=False)
+
+
+elif page == "Strutturazione FHIR":
+    _hero(
+        "Strutturazione FHIR",
+        "Pipeline OCR → anonimizzazione → strutturazione FHIR R4 via LLM (gpt-oss-20b).",
+    )
+
+    uploaded = st.file_uploader(
+        "Carica documento",
+        type=["png", "jpg", "jpeg"],
+        key="fhir_uploader",
+    )
+
+    col_l, col_r = st.columns([1, 1])
+
+    if uploaded is not None:
+        col_l.image(uploaded, use_container_width=True)
+
+        if col_l.button("Struttura in FHIR", type="primary", key="fhir_btn"):
+            image_b64 = base64.b64encode(uploaded.getvalue()).decode("utf-8")
+            with st.spinner("Pipeline in corso (OCR → anonimizzazione → LLM)..."):
+                try:
+                    r = requests.post(
+                        f"{API_URL}/fhir/document",
+                        json={"image_base64": image_b64},
+                        timeout=TIMEOUT,
+                    )
+                    r.raise_for_status()
+                    data = r.json()
+                except requests.RequestException as exc:
+                    col_r.error(f"Errore API: {exc}")
+                else:
+                    tabs = col_r.tabs(["FHIR", "Anonimizzato", "OCR"])
+
+                    with tabs[0]:
+                        fhir = data.get("fhir")
+                        if fhir is None:
+                            st.warning(
+                                "L'LLM non ha prodotto JSON valido. "
+                                "Output grezzo qui sotto."
+                            )
+                            st.code(data.get("fhir_raw", ""), language="text")
+                        else:
+                            st.json(fhir, expanded=2)
+                            st.download_button(
+                                "Scarica Bundle JSON",
+                                data=json.dumps(fhir, indent=2, ensure_ascii=False),
+                                file_name="fhir_bundle.json",
+                                mime="application/json",
+                            )
+
+                    with tabs[1]:
+                        st.text_area(
+                            "Testo anonimizzato",
+                            data.get("anonymized_text", ""),
+                            height=320,
+                            label_visibility="collapsed",
+                        )
+
+                    with tabs[2]:
+                        st.text_area(
+                            "Testo OCR",
+                            data.get("ocr_text", ""),
+                            height=320,
+                            label_visibility="collapsed",
+                        )
+
+
+elif page == "Classificazione immagine":
+    _hero(
+        "Classificazione immagine",
+        "Zero-shot classification con openai/clip-vit-base-patch32: medica vs non medica.",
+    )
+
+    uploaded = st.file_uploader(
+        "Carica un'immagine",
+        type=["png", "jpg", "jpeg"],
+        key="clip_uploader",
+    )
+
+    with st.expander("Etichette personalizzate (opzionale)"):
+        labels_raw = st.text_input(
+            "Etichette separate da virgola",
+            value="medical image, non-medical image",
+            key="clip_labels",
+        )
+
+    if uploaded is not None:
+        col_l, col_r = st.columns([1, 1], gap="large")
+
+        with col_l:
+            st.markdown('<div class="hc-card-title">Immagine</div>', unsafe_allow_html=True)
+            st.image(uploaded, use_container_width=True)
+            run = st.button("Classifica", type="primary", use_container_width=True, key="clip_btn")
+
+        with col_r:
+            if run:
+                labels = [s.strip() for s in labels_raw.split(",") if s.strip()]
+                payload: dict = {
+                    "image_base64": base64.b64encode(uploaded.getvalue()).decode("utf-8"),
+                }
+                if labels:
+                    payload["candidate_labels"] = labels
+
+                with st.spinner("Classificazione in corso..."):
+                    try:
+                        r = requests.post(
+                            f"{API_URL}/image/classify",
+                            json=payload,
+                            timeout=TIMEOUT,
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                    except requests.RequestException as exc:
+                        st.error(f"Errore API: {exc}")
+                    else:
+                        top = data["top_label"]
+                        is_medical = data["is_medical"]
+                        verdict_class = "online" if is_medical else "offline"
+                        verdict_text = "Medica" if is_medical else "Non medica"
+                        st.markdown(
+                            f'<div class="hc-status {verdict_class}" style="font-size:0.85rem; padding:5px 12px;">'
+                            f'<span class="dot"></span>{verdict_text}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f'<div style="margin: 10px 0 16px 0; color:#6b7280; font-size:0.85rem;">'
+                            f'Top label: <b style="color:#111827;">{top}</b></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        st.dataframe(
+                            data["scores"],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "label": st.column_config.TextColumn("Etichetta", width="large"),
+                                "score": st.column_config.ProgressColumn(
+                                    "Confidenza",
+                                    format="%.3f",
+                                    min_value=0.0,
+                                    max_value=1.0,
+                                ),
+                            },
+                        )
+            else:
+                st.markdown(
+                    '<div class="hc-empty">Premi <b>Classifica</b> per eseguire la classificazione zero-shot.</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.markdown(
+            '<div class="hc-empty">Nessuna immagine caricata. Carica un PNG o JPEG per iniziare.</div>',
+            unsafe_allow_html=True,
+        )
+
+

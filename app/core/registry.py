@@ -4,6 +4,8 @@ from app.services.anonymization.base import AnonymizationService
 from app.services.anonymization.openai_pf import OpenAIPrivacyFilterService
 from app.services.fhir.base import FHIRStructuringService
 from app.services.fhir.llm_structurer import LLMFHIRStructurer
+from app.services.image_classification.base import ImageClassificationService
+from app.services.image_classification.clip import CLIPImageClassificationService
 from app.services.llm.base import LLMService
 from app.services.llm.gpt_oss import GPTOSS20BService
 from app.services.ocr.base import OCRService
@@ -43,3 +45,8 @@ def get_llm_service() -> LLMService:
 @lru_cache(maxsize=1)
 def get_fhir_structurer() -> FHIRStructuringService:
     return LLMFHIRStructurer(get_llm_service())
+
+
+@lru_cache(maxsize=1)
+def get_image_classification_service() -> ImageClassificationService:
+    return CLIPImageClassificationService()
