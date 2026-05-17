@@ -37,12 +37,22 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     return None
 
 
+_MAX_INPUT_CHARS = 6000
+
+
 class LLMFHIRStructurer(FHIRStructuringService):
     def __init__(self, llm: LLMService, max_new_tokens: int = 2048) -> None:
         self._llm = llm
         self._max_new_tokens = max_new_tokens
 
     def structure(self, text: str) -> tuple[dict[str, Any] | None, str]:
+        if len(text) > _MAX_INPUT_CHARS:
+            logger.warning(
+                "[fhir] input text truncated from %d to %d chars",
+                len(text),
+                _MAX_INPUT_CHARS,
+            )
+            text = text[:_MAX_INPUT_CHARS]
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": text},

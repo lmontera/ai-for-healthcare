@@ -1,7 +1,7 @@
 import logging
 import time
 
-from transformers import pipeline
+from transformers import GenerationConfig, pipeline
 
 from app.services.llm.base import LLMService
 
@@ -20,10 +20,19 @@ class GPTOSS20BService(LLMService):
             torch_dtype="auto",
             device_map="auto",
         )
+        self._pipeline.model.generation_config.max_length = None
+        try:
+            self._pipeline.model.config.moe_implementation = "eager"
+        except Exception:
+            logger.warning("[llm] cannot set moe_implementation=eager; using default")
         logger.info("[llm] model loaded in %.2fs", time.perf_counter() - t0)
 
     def chat(self, messages: list[dict], max_new_tokens: int = 1024) -> str:
-        outputs = self._pipeline(messages, max_new_tokens=max_new_tokens)
+        gen_cfg = GenerationConfig(
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+        )
+        outputs = self._pipeline(messages, generation_config=gen_cfg)
         generated = outputs[0]["generated_text"]
         if isinstance(generated, list):
             return generated[-1].get("content", "")
