@@ -10,6 +10,7 @@ from app.api.routes import (
     image_classification,
     pii,
     transcribe,
+    transcription_extract,
     transcription_refine,
 )
 from app.whisperlive_server import start_whisperlive_background
@@ -41,6 +42,7 @@ app.include_router(transcribe.router)
 app.include_router(fhir.router)
 app.include_router(image_classification.router)
 app.include_router(transcription_refine.router)
+app.include_router(transcription_extract.router)
 
 
 @app.get("/health")

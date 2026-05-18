@@ -1172,6 +1172,224 @@ stopBtn.onclick = () => {
                     mime="text/plain",
                 )
 
+    st.divider()
+    st.markdown("### Compilazione automatica questionari")
+    st.caption(
+        "Definisci lo schema dei questionari (JSON). L'LLM analizza la trascrizione "
+        "e propone i valori da inserire campo per campo. Tu accetti o rifiuti."
+    )
+
+    DEFAULT_QUESTIONNAIRES = {
+        "Oculistica": [
+            {
+                "id": 1,
+                "name": "Anamnesi",
+                "fields": [
+                    {"name": "allergie", "description": "Allergie note e reazioni avverse a farmaci"},
+                    {"name": "motivo_visita", "description": "Motivo principale della visita"},
+                    {"name": "terapia_preesistente", "description": "Terapie già in corso prima della visita"},
+                    {
+                        "name": "ipertensione",
+                        "description": "Soffre di pressione alta",
+                        "type": "select",
+                        "options": [
+                            {"label": "Sì", "value": "yes"},
+                            {"label": "No", "value": "no"},
+                        ],
+                    },
+                ],
+                "existing_data": {},
+            },
+            {
+                "id": 2,
+                "name": "Esame Obiettivo Oculistico",
+                "fields": [
+                    {"name": "cornea_od", "description": "Aspetto cornea OD"},
+                    {"name": "cornea_os", "description": "Aspetto cornea OS"},
+                    {"name": "cristallino_od", "description": "Aspetto cristallino OD"},
+                    {"name": "cristallino_os", "description": "Aspetto cristallino OS"},
+                    {"name": "sfera_od", "description": "Refrazione sferica OD (diottrie)", "type": "number"},
+                    {"name": "cilindro_od", "description": "Refrazione cilindrica OD (diottrie)", "type": "number"},
+                    {"name": "asse_od", "description": "Asse del cilindro OD (gradi)", "type": "number"},
+                    {"name": "pressione_oculare_od", "description": "Tono oculare OD (mmHg)", "type": "number"},
+                    {"name": "pressione_oculare_os", "description": "Tono oculare OS (mmHg)", "type": "number"},
+                ],
+                "existing_data": {},
+            },
+            {
+                "id": 3,
+                "name": "Diagnosi e Terapia",
+                "fields": [
+                    {"name": "diagnosi", "description": "Diagnosi clinica conclusiva (max 150 caratteri)"},
+                    {"name": "terapia", "description": "Terapia prescritta oggi"},
+                ],
+                "existing_data": {},
+            },
+        ],
+        "Generale": [
+            {
+                "id": 1,
+                "name": "Anamnesi",
+                "fields": [
+                    {"name": "allergie", "description": "Allergie note"},
+                    {"name": "motivo_visita", "description": "Motivo della visita"},
+                    {"name": "anamnesi_patologica", "description": "Patologie pregresse o in corso"},
+                    {"name": "terapia_in_atto", "description": "Farmaci attualmente assunti"},
+                ],
+                "existing_data": {},
+            },
+            {
+                "id": 2,
+                "name": "Diagnosi e Terapia",
+                "fields": [
+                    {"name": "diagnosi", "description": "Diagnosi conclusiva"},
+                    {"name": "terapia", "description": "Terapia prescritta"},
+                ],
+                "existing_data": {},
+            },
+        ],
+    }
+
+    default_q_specialty = (
+        specialty if specialty in DEFAULT_QUESTIONNAIRES else "Generale"
+    )
+    if (
+        "tx_q_schema" not in st.session_state
+        or st.session_state.get("tx_q_schema_specialty") != default_q_specialty
+    ):
+        st.session_state["tx_q_schema"] = json.dumps(
+            DEFAULT_QUESTIONNAIRES[default_q_specialty], indent=2, ensure_ascii=False
+        )
+        st.session_state["tx_q_schema_specialty"] = default_q_specialty
+
+    schema_text = st.text_area(
+        "Schema questionari (JSON)",
+        key="tx_q_schema",
+        height=260,
+        help='Lista di questionari. Ogni questionario: {id, name, fields:[{name, description, type?, options?}]}',
+    )
+
+    transcript_source = st.radio(
+        "Trascrizione da analizzare",
+        ["Grezza (dal campo sopra)", "Pulita (dopo refine)", "Personalizzata"],
+        horizontal=True,
+        key="tx_extract_src",
+    )
+    if transcript_source == "Pulita (dopo refine)":
+        transcript_to_use = st.session_state.get("tx_refined_out", "")
+    elif transcript_source == "Personalizzata":
+        transcript_to_use = st.text_area(
+            "Trascrizione personalizzata",
+            height=160,
+            key="tx_custom_for_extract",
+        )
+    else:
+        transcript_to_use = st.session_state.get("tx_raw_to_refine", "")
+
+    col_e, _ = st.columns([1, 4])
+    do_extract = col_e.button(
+        "Estrai campi",
+        type="primary",
+        disabled=not (transcript_to_use or "").strip() or not schema_text.strip(),
+        key="tx_extract_btn",
+    )
+
+    if do_extract:
+        try:
+            questionnaires_payload = json.loads(schema_text)
+            if not isinstance(questionnaires_payload, list):
+                raise ValueError("Lo schema deve essere una LISTA di questionari.")
+        except (json.JSONDecodeError, ValueError) as exc:
+            st.error(f"Schema JSON non valido: {exc}")
+        else:
+            with st.spinner("Estrazione in corso…"):
+                try:
+                    r = requests.post(
+                        f"{API_URL}/transcription/extract",
+                        json={
+                            "transcript": transcript_to_use,
+                            "questionnaires": questionnaires_payload,
+                            "context": context_text,
+                        },
+                        timeout=TIMEOUT,
+                    )
+                    r.raise_for_status()
+                    data = r.json()
+                except requests.RequestException as exc:
+                    st.error(f"Errore API: {exc}")
+                else:
+                    proposals = data.get("questionnaires", {}) or {}
+                    st.session_state["tx_proposals"] = proposals
+                    st.session_state["tx_proposals_status"] = {
+                        qid: {f: "pending" for f in fields}
+                        for qid, fields in proposals.items()
+                    }
+                    if not proposals:
+                        st.warning(
+                            "L'LLM non ha estratto campi. Output grezzo:"
+                        )
+                        st.code(data.get("raw", ""), language="json")
+
+    proposals = st.session_state.get("tx_proposals", {})
+    if proposals:
+        st.markdown("**Proposte di compilazione**")
+        # Mappa id -> nome dal payload originale
+        try:
+            qschema = json.loads(st.session_state.get("tx_q_schema", "[]"))
+            name_by_id = {str(q["id"]): q.get("name", str(q["id"])) for q in qschema}
+        except json.JSONDecodeError:
+            name_by_id = {}
+
+        statuses = st.session_state.setdefault("tx_proposals_status", {})
+
+        for qid, fields in proposals.items():
+            q_name = name_by_id.get(str(qid), f"Questionario {qid}")
+            st.markdown(f"#### {q_name}")
+            q_statuses = statuses.setdefault(qid, {})
+            for field_name, value in fields.items():
+                cur = q_statuses.get(field_name, "pending")
+                cols = st.columns([2, 4, 1, 1])
+                cols[0].markdown(f"`{field_name}`")
+                cols[1].markdown(
+                    f"<div style='padding:6px 10px;background:#f3f4f6;border-radius:4px;font-family:ui-monospace;font-size:12.5px;'>{json.dumps(value, ensure_ascii=False)}</div>",
+                    unsafe_allow_html=True,
+                )
+                if cols[2].button(
+                    "✓" if cur != "accepted" else "✅",
+                    key=f"acc_{qid}_{field_name}",
+                    help="Accetta",
+                ):
+                    q_statuses[field_name] = "accepted"
+                    st.rerun()
+                if cols[3].button(
+                    "✗" if cur != "rejected" else "❌",
+                    key=f"rej_{qid}_{field_name}",
+                    help="Rifiuta",
+                ):
+                    q_statuses[field_name] = "rejected"
+                    st.rerun()
+
+        # Bundle accettati
+        accepted = {}
+        for qid, fields in proposals.items():
+            accepted_fields = {
+                f: v
+                for f, v in fields.items()
+                if statuses.get(qid, {}).get(f) == "accepted"
+            }
+            if accepted_fields:
+                accepted[qid] = accepted_fields
+
+        if accepted:
+            st.markdown("**Campi accettati**")
+            st.json(accepted, expanded=False)
+            st.download_button(
+                "Scarica JSON accettati",
+                data=json.dumps(accepted, indent=2, ensure_ascii=False),
+                file_name="questionari_compilati.json",
+                mime="application/json",
+            )
+
 
 elif page == "Strutturazione FHIR":
     _hero(
