@@ -23,7 +23,6 @@ from app.schemas.pii import PIIEntity
 from app.services.anonymization.image_masker import mask_image_with_entities
 from app.services.anonymization.llm_anonymizer import LLMAnonymizationService
 from app.services.anonymization.llm_anonymizer import _SYSTEM_PROMPT as _ANONYMIZE_SYSTEM_PROMPT
-from app.services.anonymization.llm_spans import spans_from_llm_anonymized
 
 logger = logging.getLogger(__name__)
 
@@ -133,21 +132,21 @@ def anonymize_document_llm_masked(payload: AnonymizeRequest) -> AnonymizeMaskedR
     words = ocr_result["words"]
 
     anonymizer = LLMAnonymizationService(get_llm_service())
-    anonymized_text = anonymizer.anonymize(text)
+    entities = anonymizer.detect_entities(text)
 
-    # Derive bbox-relevant spans DIRECTLY from the LLM-anonymized text.
-    # This guarantees the image masking matches exactly what the LLM decided
-    # to anonymize — niente PII detector aggressivo.
-    derived = spans_from_llm_anonymized(text, anonymized_text)
+    # Same entities drive BOTH text masking and image masking.
+    from app.services.anonymization.utils import mask_text_with_entities
+    anonymized_text = mask_text_with_entities(text, entities)
+
     pii_for_image = [
         PIIEntity(
-            label=d["label"],
-            text=d["text"],
-            start=d["start"],
-            end=d["end"],
-            score=d["score"],
+            label=e["label"],
+            text=e["text"],
+            start=e["start"],
+            end=e["end"],
+            score=e["score"],
         )
-        for d in derived
+        for e in entities
     ]
     masked_png = mask_image_with_entities(image_bytes, words, pii_for_image)
 
@@ -155,23 +154,23 @@ def anonymize_document_llm_masked(payload: AnonymizeRequest) -> AnonymizeMaskedR
         "[anonymize-llm:masked] finish=%s elapsed=%.2fs entities=%d",
         datetime.now().strftime("%H:%M:%S"),
         time.perf_counter() - t0,
-        len(derived),
+        len(entities),
     )
 
     return AnonymizeMaskedResponse(
         ocr_text=text,
         anonymized_text=anonymized_text,
         masked_image_base64=base64.b64encode(masked_png).decode("ascii"),
-        entities_count=len(derived),
+        entities_count=len(entities),
         entities=[
             EntityWithScore(
-                label=d["label"],
-                text=d["text"],
-                start=d["start"],
-                end=d["end"],
-                score=d["score"],
+                label=e["label"],
+                text=e["text"],
+                start=e["start"],
+                end=e["end"],
+                score=e["score"],
             )
-            for d in derived
+            for e in entities
         ],
         min_score=0.0,
     )

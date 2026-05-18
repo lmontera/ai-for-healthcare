@@ -1,62 +1,115 @@
+import json
 import logging
+import re
 
 from app.services.anonymization.base import AnonymizationService
+from app.services.anonymization.utils import mask_text_with_entities
 from app.services.llm.base import LLMService
 
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """Sei un esperto di anonimizzazione di documenti medici in italiano.
 
-Ricevi il testo OCR di un referto, una visita o un esame clinico. Devi restituire
-il testo IDENTICO ma con SOLO i DATI PERSONALI sostituiti da placeholder.
+Ricevi il testo OCR di un referto, una visita o un esame clinico.
+Devi IDENTIFICARE i DATI PERSONALI presenti nel testo e restituirli come JSON.
 
-DEFINIZIONE — Cosa è "dato personale" (DEVE essere anonimizzato):
-- Nomi e cognomi di persone (pazienti, medici, parenti, contatti).
-- Date riferite a persone (nascita, decesso, ricovero, dimissione, visita, esame).
-- Email, telefoni, fax personali.
-- Indirizzi di residenza, città, CAP.
-- Codici identificativi personali (codice fiscale, tessera sanitaria, ID paziente/cartella, matricola, partita IVA).
-- URL personali (profili social, pagine private).
+NON riscrivere il testo, NON commentare: restituisci SOLO JSON con questa forma:
 
-DEFINIZIONE — Cosa NON è dato personale (NON toccare MAI):
-- Nomi di STRUMENTI, dispositivi, macchinari, software (es. "Heidelberg Spectralis",
-  "OCT", "Topcon TRC-NW8", "GE LOGIQ", "Siemens Magnetom", "iCare").
-- Nomi di FARMACI e principi attivi (es. "Tobradex", "amoxicillina", "Avastin").
-- Nomi di ESAMI, test e procedure (es. "fluorangiografia", "tonometria", "ECG",
-  "PCR", "emocromo", "TC torace").
-- TERMINI ANATOMICI, patologie, sintomi, diagnosi.
-- Codici clinici/standard: LOINC, SNOMED, ICD-10, ATC, CIE, MeSH, codici onde
-  ICD9-CM, codici NABM, ecc.
-- Unità di misura e range di riferimento (es. "mmHg", "mg/dL", "v.n. 0.5-1.2").
-- Valori numerici clinici: pressione, frequenza cardiaca, frazione di eiezione,
-  diottrie, dosaggi, percentuali. MAI anonimizzare numeri clinici.
-- Nomi di SOCIETÀ SCIENTIFICHE, riviste, linee guida (es. "ESC 2024", "SIO",
-  "GOLD", "NICE").
-- Nomi di STRUTTURE SANITARIE GENERICHE non riferite al paziente specifico
-  (es. "ASL", "AOU", "policlinico universitario"). Anonimizza il NOME PROPRIO
-  della struttura solo se è chiaramente l'ente che ha emesso il referto e
-  identifica indirettamente il paziente.
-- Titoli generici senza nome ("il medico", "il radiologo", "il paziente").
+{
+  "entities": [
+    {"text": "<estratto LETTERALE dal documento>", "label": "<LABEL>"},
+    ...
+  ]
+}
 
-Placeholder da usare (parentesi quadre, MAIUSCOLO):
-- [FIRSTNAME]   nomi propri di persone
-- [LASTNAME]    cognomi
-- [PERSON]      nome+cognome quando non separabili
-- [DATE]        date personali (nascita, visita, esame)
-- [EMAIL]       indirizzi email
-- [PHONE]       telefoni / fax
-- [ADDRESS]     vie, civici, città, CAP
-- [ID]          codici fiscali, ID paziente, numeri di cartella, tessera sanitaria
-- [URL]         link personali
-- [DOCTOR]      nomi di medici (Dr./Dott./Prof. + cognome)
-- [HOSPITAL]    nome PROPRIO della struttura emittente del referto (solo se identificante)
+ETICHETTE possibili (label):
+- FIRSTNAME    nomi propri di persone
+- LASTNAME     cognomi
+- PERSON       nome+cognome quando non separabili
+- DATE         date personali (nascita, visita, esame, ricovero)
+- EMAIL        indirizzi email
+- PHONE        telefoni / fax
+- ADDRESS      vie, civici, città, CAP
+- ID           codici fiscali, ID paziente, tessera sanitaria, n. cartella
+- URL          link personali
+- DOCTOR       nomi di medici (Dr./Dott./Prof. + cognome)
+- HOSPITAL     nome PROPRIO della struttura emittente del referto
+
+COSA È DATO PERSONALE (DA includere):
+- nomi/cognomi di persone (pazienti, medici, parenti, contatti)
+- date riferite a persone (nascita, decesso, visita, esame)
+- email, telefoni, fax personali
+- indirizzi di residenza, città, CAP
+- codici identificativi (CF, tessera sanitaria, ID, partita IVA)
+- URL personali
+
+COSA NON È DATO PERSONALE (NON includere):
+- nomi di STRUMENTI/dispositivi/macchinari/software (es. Heidelberg Spectralis, OCT, Topcon)
+- nomi di FARMACI e principi attivi
+- nomi di ESAMI/procedure (tonometria, ECG, fluorangiografia, emocromo, TC)
+- termini anatomici, patologie, sintomi, diagnosi
+- codici clinici (LOINC, SNOMED, ICD-10, ATC, MeSH, NABM)
+- unità di misura, range di riferimento (mmHg, mg/dL, v.n. 0.5-1.2)
+- valori numerici clinici (PA, FE, diottrie, dosaggi, %)
+- società scientifiche, riviste, linee guida (ESC, NICE, GOLD, SIO)
+- strutture sanitarie generiche ("il policlinico", "l'ASL")
+- titoli generici senza nome ("il medico", "il radiologo", "il paziente")
 
 REGOLE RIGIDE:
-- Mantieni la formattazione, la punteggiatura e gli a-capo originali del testo.
-- Nel dubbio NON anonimizzare. È meglio lasciare un termine clinico/strumentale
-  intatto che mascherare per errore.
-- NON inventare nulla. NON aggiungere commenti o note.
-- Restituisci SOLO il testo anonimizzato, plain text, senza markdown."""
+- "text" DEVE essere ESATTAMENTE come compare nel documento (stessa maiuscola/minuscola, stessi spazi e punteggiatura). NON modificare nulla.
+- Una entry per ogni occorrenza: se "Mario Rossi" compare 3 volte, metti 3 entries.
+- Se non ci sono dati personali, ritorna {"entities": []}.
+- Nessun markdown, nessun testo prima o dopo. Inizia con { e termina con }."""
+
+
+def _extract_json(text: str) -> dict | None:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _spans_from_entities(text: str, llm_entities: list[dict]) -> list[dict]:
+    """For each entity returned by the LLM (with literal `text` snippet),
+    find its position in the original `text` and return spans.
+
+    Handles multiple occurrences by tracking a per-snippet cursor.
+    """
+    out: list[dict] = []
+    cursor_by_text: dict[str, int] = {}
+    for e in llm_entities:
+        snippet = (e.get("text") or "").strip()
+        label = (e.get("label") or "PII").strip().upper()
+        if not snippet:
+            continue
+        cursor = cursor_by_text.get(snippet, 0)
+        pos = text.find(snippet, cursor)
+        if pos < 0:
+            # restart from the beginning
+            pos = text.find(snippet)
+            if pos < 0:
+                logger.warning("[anonymize:llm] snippet not found in original: %r", snippet[:60])
+                continue
+        out.append(
+            {
+                "label": label,
+                "text": snippet,
+                "start": pos,
+                "end": pos + len(snippet),
+                "score": 1.0,
+            }
+        )
+        cursor_by_text[snippet] = pos + len(snippet)
+    # sort by start for downstream masking
+    out.sort(key=lambda x: x["start"])
+    return out
 
 
 class LLMAnonymizationService(AnonymizationService):
@@ -64,18 +117,32 @@ class LLMAnonymizationService(AnonymizationService):
         self._llm = llm
         self._max_new_tokens = max_new_tokens
 
-    def anonymize(self, text: str) -> str:
+    def detect_entities(self, text: str) -> list[dict]:
         if not text or not text.strip():
-            return ""
+            return []
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": text},
         ]
         logger.info("[anonymize:llm] input_chars=%d", len(text))
-        out = self._llm.chat(
+        raw = self._llm.chat(
             messages,
             max_new_tokens=self._max_new_tokens,
+            json_mode=True,
             think=False,
         )
-        logger.info("[anonymize:llm] output_chars=%d", len(out or ""))
-        return (out or "").strip()
+        logger.info("[anonymize:llm] output_chars=%d", len(raw or ""))
+        parsed = _extract_json(raw or "")
+        if not parsed:
+            logger.warning("[anonymize:llm] LLM did not return valid JSON")
+            return []
+        ents = parsed.get("entities", [])
+        if not isinstance(ents, list):
+            logger.warning("[anonymize:llm] entities is not a list")
+            return []
+        spans = _spans_from_entities(text, ents)
+        logger.info("[anonymize:llm] llm_entities=%d resolved_spans=%d", len(ents), len(spans))
+        return spans
+
+    def anonymize(self, text: str) -> str:
+        return mask_text_with_entities(text, self.detect_entities(text))
