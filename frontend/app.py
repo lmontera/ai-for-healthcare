@@ -1111,69 +1111,40 @@ elif page == "Real-time STT + EHR":
         unsafe_allow_html=True,
     )
 
-    EHR_SPECIALTY_GLOSSARIES = {
-        "Oculistica": "visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo",
-        "Cardiologia": "ECG, frequenza cardiaca, ritmo sinusale, fibrillazione atriale, ipertensione, infarto miocardico, angina, scompenso cardiaco, ecocardiogramma, frazione di eiezione, holter, pacemaker, troponina, BNP",
-        "Generale": "anamnesi, sintomi, terapia in atto, diagnosi, esame obiettivo, prescrizione, dosaggio",
-    }
-    EHR_DEFAULT_QUESTIONNAIRES = {
-        "Oculistica": [
-            {"id": 1, "name": "Anamnesi", "fields": [
-                {"name": "allergie", "description": "Allergie note"},
-                {"name": "motivo_visita", "description": "Motivo principale della visita"},
-                {"name": "terapia_preesistente", "description": "Terapie già in corso"},
-            ], "existing_data": {}},
-            {"id": 2, "name": "Esame Obiettivo Oculistico", "fields": [
-                {"name": "cornea_od", "description": "Aspetto cornea OD"},
-                {"name": "cristallino_od", "description": "Aspetto cristallino OD"},
-                {"name": "sfera_od", "description": "Refrazione sferica OD (diottrie)", "type": "number"},
-                {"name": "cilindro_od", "description": "Refrazione cilindrica OD (diottrie)", "type": "number"},
-                {"name": "asse_od", "description": "Asse del cilindro OD (gradi)", "type": "number"},
-                {"name": "pressione_oculare_od", "description": "Tono oculare OD (mmHg)", "type": "number"},
-                {"name": "pressione_oculare_os", "description": "Tono oculare OS (mmHg)", "type": "number"},
-            ], "existing_data": {}},
-            {"id": 3, "name": "Diagnosi e Terapia", "fields": [
-                {"name": "diagnosi", "description": "Diagnosi clinica (max 150 caratteri)"},
-                {"name": "terapia", "description": "Terapia prescritta oggi"},
-            ], "existing_data": {}},
-        ],
-        "Cardiologia": [
-            {"id": 1, "name": "Anamnesi", "fields": [
-                {"name": "motivo_visita", "description": "Motivo della visita"},
-                {"name": "fattori_rischio", "description": "Fattori di rischio cardiovascolare (fumo, dislipidemia, diabete, familiarità)"},
-                {"name": "terapia_in_atto", "description": "Terapie in corso"},
-            ], "existing_data": {}},
-            {"id": 2, "name": "Esame Obiettivo", "fields": [
-                {"name": "pa_sistolica", "description": "PA sistolica (mmHg)", "type": "number"},
-                {"name": "pa_diastolica", "description": "PA diastolica (mmHg)", "type": "number"},
-                {"name": "fc", "description": "Frequenza cardiaca (bpm)", "type": "number"},
-                {"name": "ritmo", "description": "Ritmo cardiaco"},
-                {"name": "toni", "description": "Toni cardiaci"},
-            ], "existing_data": {}},
-            {"id": 3, "name": "Diagnosi e Terapia", "fields": [
-                {"name": "diagnosi", "description": "Diagnosi"},
-                {"name": "terapia", "description": "Terapia prescritta"},
-            ], "existing_data": {}},
-        ],
-        "Generale": [
-            {"id": 1, "name": "Anamnesi", "fields": [
-                {"name": "allergie", "description": "Allergie note"},
-                {"name": "motivo_visita", "description": "Motivo della visita"},
-                {"name": "anamnesi_patologica", "description": "Patologie pregresse o in corso"},
-                {"name": "terapia_in_atto", "description": "Farmaci attualmente assunti"},
-            ], "existing_data": {}},
-            {"id": 2, "name": "Diagnosi e Terapia", "fields": [
-                {"name": "diagnosi", "description": "Diagnosi conclusiva"},
-                {"name": "terapia", "description": "Terapia prescritta"},
-            ], "existing_data": {}},
-        ],
-    }
+    @st.cache_data(ttl=300)
+    def _fetch_ehr_templates():
+        try:
+            r = requests.get(f"{API_URL}/transcription/templates", timeout=10)
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException:
+            return None
+
+    _ehr_templates_payload = _fetch_ehr_templates()
+    if not _ehr_templates_payload or not _ehr_templates_payload.get("templates"):
+        st.error(
+            "Impossibile caricare i template dei questionari dall'API "
+            f"({API_URL}/transcription/templates). Verifica che il server sia raggiungibile."
+        )
+        st.stop()
+
+    EHR_TEMPLATES = _ehr_templates_payload["templates"]
+    EHR_SPECIALTY_GLOSSARIES = {k: v.get("glossary", "") for k, v in EHR_TEMPLATES.items()}
+    EHR_DEFAULT_QUESTIONNAIRES = {k: v.get("questionnaires", []) for k, v in EHR_TEMPLATES.items()}
+    _ehr_default_specialty = _ehr_templates_payload.get("default") or next(iter(EHR_TEMPLATES))
 
     col_a, col_b, col_c, col_d = st.columns([1, 1, 1, 1])
+    _ehr_specialty_options = list(EHR_DEFAULT_QUESTIONNAIRES.keys())
+    _ehr_default_idx = (
+        _ehr_specialty_options.index(_ehr_default_specialty)
+        if _ehr_default_specialty in _ehr_specialty_options
+        else 0
+    )
     with col_a:
         ehr_specialty = st.selectbox(
             "Specialità",
-            list(EHR_DEFAULT_QUESTIONNAIRES.keys()),
+            _ehr_specialty_options,
+            index=_ehr_default_idx,
             key="ehr_specialty",
         )
     with col_b:
@@ -1207,23 +1178,51 @@ elif page == "Real-time STT + EHR":
     }
     ehr_sens = EHR_SENS_PARAMS[ehr_sensitivity]
 
-    ehr_context = st.text_area(
-        "Glossario / contesto clinico",
-        value=EHR_SPECIALTY_GLOSSARIES.get(ehr_specialty, ""),
-        height=80,
-        key=f"ehr_ctx_{ehr_specialty}",
-    )
+    # Glossario/contesto: derivato automaticamente dalla specialità (non visibile nella UI,
+    # serve internamente all'estrazione LLM).
+    ehr_context = EHR_SPECIALTY_GLOSSARIES.get(ehr_specialty, "")
 
     ehr_schema_key = f"ehr_schema_{ehr_specialty}"
     if ehr_schema_key not in st.session_state:
         st.session_state[ehr_schema_key] = json.dumps(
             EHR_DEFAULT_QUESTIONNAIRES[ehr_specialty], indent=2, ensure_ascii=False
         )
-    ehr_schema = st.text_area(
-        "Schema questionari (JSON, modificabile)",
-        key=ehr_schema_key,
-        height=220,
-    )
+
+    # Visualizzazione dello schema come chip colorati (questionari + campi).
+    EHR_PALETTE = [
+        ("#fee2e2", "#991b1b"),  # rosso chiaro
+        ("#dcfce7", "#166534"),  # verde chiaro
+        ("#dbeafe", "#1e40af"),  # blu chiaro
+        ("#fef3c7", "#92400e"),  # giallo
+        ("#ede9fe", "#5b21b6"),  # viola
+        ("#cffafe", "#155e75"),  # ciano
+        ("#fce7f3", "#9d174d"),  # rosa
+    ]
+    try:
+        _ehr_schema_for_chips = json.loads(st.session_state[ehr_schema_key])
+    except json.JSONDecodeError:
+        _ehr_schema_for_chips = []
+    chips_html_parts: list[str] = ['<div style="display:flex;flex-direction:column;gap:10px;margin:6px 0 14px 0;">']
+    for i, q in enumerate(_ehr_schema_for_chips):
+        bg, fg = EHR_PALETTE[i % len(EHR_PALETTE)]
+        q_name = html.escape(str(q.get("name", "Questionario")))
+        fields = q.get("fields", []) or []
+        field_chips = "".join(
+            f'<span style="display:inline-block;padding:3px 9px;margin:2px 4px 2px 0;'
+            f'background:{bg};color:{fg};border-radius:999px;font-size:11.5px;'
+            f'font-weight:500;letter-spacing:0.2px;">{html.escape(str(f.get("name", "")))}</span>'
+            for f in fields
+            if f.get("name")
+        )
+        chips_html_parts.append(
+            f'<div>'
+            f'<div style="font-size:12px;font-weight:600;color:{fg};margin-bottom:4px;'
+            f'text-transform:uppercase;letter-spacing:0.5px;">{q_name}</div>'
+            f'<div>{field_chips}</div>'
+            f'</div>'
+        )
+    chips_html_parts.append("</div>")
+    st.markdown("".join(chips_html_parts), unsafe_allow_html=True)
 
     api_url_for_browser = os.getenv("API_URL_BROWSER", os.getenv("API_URL", "http://localhost:8080"))
     ws_url = os.getenv("WHISPERLIVE_URL", "ws://localhost:9090")
