@@ -129,7 +129,7 @@ class LLMAnonymizationService(AnonymizationService):
             messages,
             max_new_tokens=self._max_new_tokens,
             json_mode=True,
-            think=True,
+            think=False,
         )
         raw = raw or ""
         logger.info("[anonymize:llm] output_chars=%d head=%r", len(raw), raw[:200])
