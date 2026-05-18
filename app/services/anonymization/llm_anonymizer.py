@@ -113,7 +113,7 @@ def _spans_from_entities(text: str, llm_entities: list[dict]) -> list[dict]:
 
 
 class LLMAnonymizationService(AnonymizationService):
-    def __init__(self, llm: LLMService, max_new_tokens: int = 4096) -> None:
+    def __init__(self, llm: LLMService, max_new_tokens: int = 8192) -> None:
         self._llm = llm
         self._max_new_tokens = max_new_tokens
 
@@ -129,16 +129,17 @@ class LLMAnonymizationService(AnonymizationService):
             messages,
             max_new_tokens=self._max_new_tokens,
             json_mode=True,
-            think=False,
+            think=True,
         )
-        logger.info("[anonymize:llm] output_chars=%d", len(raw or ""))
-        parsed = _extract_json(raw or "")
+        raw = raw or ""
+        logger.info("[anonymize:llm] output_chars=%d head=%r", len(raw), raw[:200])
+        parsed = _extract_json(raw)
         if not parsed:
-            logger.warning("[anonymize:llm] LLM did not return valid JSON")
+            logger.warning("[anonymize:llm] LLM did not return valid JSON. Full output: %r", raw[:2000])
             return []
         ents = parsed.get("entities", [])
         if not isinstance(ents, list):
-            logger.warning("[anonymize:llm] entities is not a list")
+            logger.warning("[anonymize:llm] entities is not a list, parsed=%r", parsed)
             return []
         spans = _spans_from_entities(text, ents)
         logger.info("[anonymize:llm] llm_entities=%d resolved_spans=%d", len(ents), len(spans))
