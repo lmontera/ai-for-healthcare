@@ -511,6 +511,7 @@ with st.sidebar:
             "Rilevamento PII",
             "Trascrizione",
             "Trascrizione live",
+            "Real-time STT + EHR",
             "Strutturazione FHIR",
             "Classificazione immagine",
         ],
@@ -769,44 +770,9 @@ elif page == "Trascrizione live":
     )
 
     st.markdown(
-        '<div class="hc-note">Imposta la specialità e (facoltativo) un contesto clinico prima di registrare: viene usato come <i>initial prompt</i> per orientare il modello e ridurre allucinazioni.</div>',
+        '<div class="hc-note">Su CPU con large-v3 i parziali hanno qualche secondo di lag. Il primo avvio carica il modello (può richiedere alcuni minuti).</div>',
         unsafe_allow_html=True,
     )
-
-    SPECIALTY_GLOSSARIES = {
-        "Oculistica": "visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, occlusione venosa, edema maculare, neovascolarizzazione, biomicroscopia, oftalmoscopia, OCT, fluorangiografia, angio-OCT, campo visivo, ecografia oculare, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo",
-        "Cardiologia": "ECG, elettrocardiogramma, frequenza cardiaca, ritmo sinusale, fibrillazione atriale, flutter, extrasistole, blocco di branca, ipertensione arteriosa, ipotensione, infarto miocardico acuto, IMA, angina pectoris, scompenso cardiaco, insufficienza cardiaca, ecocardiogramma, frazione di eiezione, FE, holter, ergometrica, ablazione transcatetere, pacemaker, defibrillatore, ICD, stenosi mitralica, insufficienza aortica, prolasso mitralico, dispnea, sincope, dolore toracico, troponina, BNP",
-        "Neurologia": "cefalea, emicrania, vertigine, parestesia, ipoestesia, paresi, paralisi, afasia, disartria, atassia, ictus ischemico, ictus emorragico, TIA, epilessia, crisi tonico-cloniche, sclerosi multipla, morbo di Parkinson, tremore, demenza, Alzheimer, EEG, EMG, risonanza magnetica encefalo, RMN, TC cranio, liquor, mielo-encefalite",
-        "Ortopedia": "frattura, distorsione, lussazione, contusione, lesione legamentosa, menisco, crociato anteriore, ACL, crociato posteriore, PCL, tendinopatia, capsulite adesiva, spalla congelata, ernia discale, lombalgia, sciatica, scoliosi, osteoartrosi, osteoporosi, protesi anca, protesi ginocchio, artroscopia, radiografia, RX, risonanza magnetica articolare",
-        "Oncologia": "neoplasia, tumore, carcinoma, adenocarcinoma, sarcoma, linfoma, leucemia, metastasi, stadiazione TNM, biopsia, citologia, immunoistochimica, chemioterapia, radioterapia, immunoterapia, target therapy, anticorpo monoclonale, performance status, ECOG, PET, TC con mezzo di contrasto, marker tumorali, CEA, CA 125, PSA, AFP",
-        "Pediatria": "neonato, lattante, bambino, peso alla nascita, percentile, vaccinazioni, esantema, otite, faringite, bronchiolite, asma, dermatite atopica, allergia alimentare, sviluppo psicomotorio, anamnesi familiare, allattamento al seno",
-        "Generale": "anamnesi, sintomi, terapia in atto, diagnosi differenziale, esame obiettivo, paziente, prescrizione, dosaggio, posologia, controindicazioni, follow-up, esami ematochimici",
-        "Personalizzato": "",
-    }
-
-    col_sp, col_ctx = st.columns([1, 3])
-    with col_sp:
-        specialty = st.selectbox(
-            "Specialità",
-            list(SPECIALTY_GLOSSARIES.keys()),
-            key="tx_specialty",
-        )
-    with col_ctx:
-        context_text = st.text_area(
-            "Contesto / glossario (modificabile)",
-            value=SPECIALTY_GLOSSARIES[specialty],
-            height=110,
-            key=f"tx_context_{specialty}",
-            help="Termini e contesto suggeriti al modello. Aggiungi nomi di farmaci, parametri specifici della visita, ecc.",
-        )
-
-    if context_text.strip():
-        initial_prompt = (
-            f"Trascrizione di visita {specialty.lower()} in italiano clinico. "
-            f"Termini ricorrenti: {context_text.strip()}."
-        )
-    else:
-        initial_prompt = "Trascrizione medica in italiano clinico."
 
     ws_url = os.getenv("WHISPERLIVE_URL", "ws://localhost:9090")
     model_name = "ReportAId/medwhisper-large-v3-ita-ct2"
@@ -816,96 +782,22 @@ elif page == "Trascrizione live":
 <html>
 <head>
 <style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    padding: 0; margin: 0;
-    background: transparent;
-    color: #1f2937;
-  }
-  .panel {
-    background: #ffffff;
-    border-radius: 6px;
-    padding: 18px;
-    border: 1px solid #e5e7eb;
-  }
-  .controls {
-    display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
-    flex-wrap: wrap;
-  }
-  button {
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid #d1d5db;
-    border-radius: 5px;
-    background: #ffffff;
-    color: #374151;
-    transition: background 0.15s ease, border-color 0.15s ease;
-  }
-  button:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: #9ca3af;
-  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0; margin: 0; background: transparent; color: #1f2937; }
+  .panel { background: #ffffff; border-radius: 6px; padding: 18px; border: 1px solid #e5e7eb; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  button { padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid #d1d5db; border-radius: 5px; background: #ffffff; color: #374151; }
+  button:hover:not(:disabled) { background: #f9fafb; border-color: #9ca3af; }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  button.primary {
-    background: #1f2937;
-    color: #ffffff;
-    border-color: #1f2937;
-  }
-  button.primary:hover:not(:disabled) {
-    background: #111827;
-    border-color: #111827;
-  }
-  #status {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: #6b7280; font-size: 12px; font-weight: 500;
-    padding: 3px 10px;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-  }
-  #status .dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: #9ca3af;
-  }
+  button.primary { background: #1f2937; color: #ffffff; border-color: #1f2937; }
+  button.primary:hover:not(:disabled) { background: #111827; border-color: #111827; }
+  #status { display: inline-flex; align-items: center; gap: 6px; color: #6b7280; font-size: 12px; font-weight: 500; padding: 3px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; }
+  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: #9ca3af; }
   #status.active .dot { background: #6b7280; }
   #status.recording .dot { background: #dc2626; }
-  #transcript {
-    padding: 14px;
-    background: #fafafa;
-    border: 1px solid #e5e7eb;
-    border-radius: 5px;
-    min-height: 260px;
-    max-height: 380px;
-    overflow-y: auto;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    font-size: 13px;
-    line-height: 1.6;
-    color: #1f2937;
-  }
-  .segment {
-    padding: 7px 11px;
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-left: 2px solid #6b7280;
-    border-radius: 0 3px 3px 0;
-    margin-bottom: 6px;
-  }
-  .segment .ts {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 10.5px;
-    color: #6b7280;
-    font-weight: 600;
-    display: block;
-    margin-bottom: 2px;
-  }
-  .empty {
-    text-align: center;
-    color: #9ca3af;
-    padding: 60px 20px;
-    font-size: 13px;
-  }
+  #transcript { padding: 14px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 5px; min-height: 260px; max-height: 380px; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+  .segment { padding: 7px 11px; background: #ffffff; border: 1px solid #e5e7eb; border-left: 2px solid #6b7280; border-radius: 0 3px 3px 0; margin-bottom: 6px; }
+  .segment .ts { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; color: #6b7280; font-weight: 600; display: block; margin-bottom: 2px; }
+  .empty { text-align: center; color: #9ca3af; padding: 60px 20px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -913,21 +805,18 @@ elif page == "Trascrizione live":
   <div class="controls">
     <button id="start" class="primary">Avvia registrazione</button>
     <button id="stop" disabled>Ferma</button>
-    <button id="copy" disabled>Copia tutto</button>
     <span id="status"><span class="dot"></span><span id="status-text">Pronto</span></span>
   </div>
   <div id="transcript">
-    <div class="empty">Premi <b>Avvia registrazione</b> per iniziare la trascrizione in tempo reale.</div>
+    <div class="empty">Premi <b>Avvia registrazione</b> per iniziare.</div>
   </div>
 </div>
 <script>
 const WS_URL = "__WS_URL__";
 const MODEL_NAME = "__MODEL_NAME__";
-const INITIAL_PROMPT = __INITIAL_PROMPT_JSON__;
 
 const startBtn = document.getElementById("start");
 const stopBtn = document.getElementById("stop");
-const copyBtn = document.getElementById("copy");
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
 const transcriptEl = document.getElementById("transcript");
@@ -936,172 +825,52 @@ let ws = null, audioCtx = null, stream = null, source = null, processor = null;
 let segments = [];
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function setStatus(t, cls) {
-  statusText.textContent = t;
-  statusEl.className = cls || "";
-}
+function setStatus(t, cls) { statusText.textContent = t; statusEl.className = cls || ""; }
 function render() {
-  if (segments.length === 0) {
-    transcriptEl.innerHTML = '<div class="empty">In ascolto...</div>';
-    return;
-  }
+  if (segments.length === 0) { transcriptEl.innerHTML = '<div class="empty">In ascolto...</div>'; return; }
   transcriptEl.innerHTML = segments.map(s =>
     `<div class="segment"><span class="ts">[${(+s.start).toFixed(1)}s → ${(+s.end).toFixed(1)}s]</span>${s.text}</div>`
   ).join("");
   transcriptEl.scrollTop = transcriptEl.scrollHeight;
-  copyBtn.disabled = segments.length === 0;
 }
-
-function fullText() {
-  return segments.map(s => (s.text || "").trim()).filter(Boolean).join(" ");
-}
-
-copyBtn.onclick = async () => {
-  const text = fullText();
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus("Copiato negli appunti", "active");
-  } catch (e) {
-    // fallback: selezione manuale
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); setStatus("Copiato", "active"); }
-    catch (err) { setStatus("Copia non riuscita", ""); }
-    document.body.removeChild(ta);
-  }
-};
 
 startBtn.onclick = async () => {
   startBtn.disabled = true;
-  segments = [];
-  render();
-
-  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    const origin = window.location.origin;
-    transcriptEl.innerHTML = `
-      <div class="empty" style="text-align:left; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:5px; padding:16px;">
-        <div style="font-weight:600; font-size:14px; margin-bottom:8px;">Microfono non accessibile</div>
-        <div style="color:#4b5563; font-size:12.5px; line-height:1.6;">
-          Il browser blocca <code>getUserMedia</code> perché stai aprendo Streamlit da
-          <code>${origin}</code>, che non è un contesto sicuro (serve <b>https://</b> o <b>localhost</b>).
-          <br/><br/>
-          <b>Soluzioni:</b>
-          <ul style="margin:6px 0 0 18px; padding:0;">
-            <li>SSH port-forward: <code>ssh -L 8501:localhost:8501 -L 9090:localhost:9090 user@server</code> e apri <code>http://localhost:8501</code></li>
-            <li>Servi Streamlit dietro HTTPS (e usa <code>wss://</code> per WhisperLive)</li>
-            <li>Solo dev/Chrome: <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></li>
-          </ul>
-        </div>
-      </div>`;
-    setStatus("Contesto non sicuro", "");
-    startBtn.disabled = false;
-    return;
-  }
-
+  segments = []; render();
   setStatus("Apro microfono...", "active");
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 16000,
-        sampleSize: 16
-      }
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
     });
-  } catch (e) {
-    setStatus("Errore microfono: " + e.message, "");
-    startBtn.disabled = false;
-    return;
-  }
+  } catch (e) { setStatus("Errore microfono: " + e.message, ""); startBtn.disabled = false; return; }
 
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-    sampleRate: 16000,
-    latencyHint: "interactive"
-  });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   source = audioCtx.createMediaStreamSource(stream);
+  processor = audioCtx.createScriptProcessor(2048, 1, 1);
+  source.connect(processor); processor.connect(audioCtx.destination);
 
-  // AudioWorklet: gira su thread audio dedicato, niente drop/jitter dal main thread
-  const workletCode = `
-class PCMProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.buf = [];
-    this.chunk = 4096; // 256 ms @ 16 kHz, miglior contesto per Whisper
-  }
-  process(inputs) {
-    const input = inputs[0];
-    if (!input || !input[0]) return true;
-    const ch = input[0];
-    for (let i = 0; i < ch.length; i++) this.buf.push(ch[i]);
-    while (this.buf.length >= this.chunk) {
-      const slice = this.buf.splice(0, this.chunk);
-      this.port.postMessage(new Float32Array(slice));
-    }
-    return true;
-  }
-}
-registerProcessor('pcm-processor', PCMProcessor);
-`;
-  const blob = new Blob([workletCode], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-  try {
-    await audioCtx.audioWorklet.addModule(blobUrl);
-  } catch (e) {
-    setStatus("AudioWorklet non supportato: " + e.message, "");
-    startBtn.disabled = false;
-    return;
-  }
-  processor = new AudioWorkletNode(audioCtx, 'pcm-processor');
-  source.connect(processor);
-  // NB: NON colleghiamo a destination per evitare eco/feedback
-
-  setStatus("Connessione WS...", "active");
-  ws = new WebSocket(WS_URL);
-  ws.binaryType = "arraybuffer";
-
+  ws = new WebSocket(WS_URL); ws.binaryType = "arraybuffer";
   ws.onopen = () => {
-    const config = {
-      uid: uid(),
-      language: "it",
-      task: "transcribe",
-      model: MODEL_NAME,
-      use_vad: true,
-      same_output_threshold: 3,
-      send_last_n_segments: 6,
-      no_speech_thresh: 0.7,
-      initial_prompt: INITIAL_PROMPT,
-      max_clients: 4,
-      max_connection_time: 600
-    };
-    ws.send(JSON.stringify(config));
-    setStatus("Caricamento modello...", "active");
-    stopBtn.disabled = false;
+    ws.send(JSON.stringify({
+      uid: uid(), language: "it", task: "transcribe", model: MODEL_NAME,
+      use_vad: true, same_output_threshold: 5, send_last_n_segments: 10,
+      no_speech_thresh: 0.45,
+      initial_prompt: "Visita medica in italiano clinico.",
+      max_clients: 4, max_connection_time: 600
+    }));
+    setStatus("Caricamento modello...", "active"); stopBtn.disabled = false;
   };
-
   ws.onmessage = (ev) => {
-    let msg;
-    try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.message === "SERVER_READY") {
-      setStatus("Registrazione attiva", "recording");
-    } else if (msg.message === "DISCONNECT") {
-      setStatus("Disconnesso", "");
-    } else if (msg.segments) {
-      segments = msg.segments;
-      render();
-    }
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.message === "SERVER_READY") setStatus("Registrazione attiva", "recording");
+    else if (msg.message === "DISCONNECT") setStatus("Disconnesso", "");
+    else if (msg.segments) { segments = msg.segments; render(); }
   };
-
   ws.onerror = () => setStatus("Errore WebSocket", "");
   ws.onclose = () => setStatus("Connessione chiusa", "");
-
-  processor.port.onmessage = (e) => {
+  processor.onaudioprocess = (e) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(e.data.buffer);
+    ws.send(e.inputBuffer.getChannelData(0).buffer);
   };
 };
 
@@ -1111,284 +880,440 @@ stopBtn.onclick = () => {
   try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
   try { audioCtx && audioCtx.close(); } catch (e) {}
   try { ws && ws.close(); } catch (e) {}
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  setStatus("Stop", "");
+  startBtn.disabled = false; stopBtn.disabled = true; setStatus("Stop", "");
 };
 </script>
 </body>
 </html>
-""".replace("__WS_URL__", ws_url).replace("__MODEL_NAME__", model_name).replace(
-        "__INITIAL_PROMPT_JSON__", json.dumps(initial_prompt, ensure_ascii=False)
-    )
+""".replace("__WS_URL__", ws_url).replace("__MODEL_NAME__", model_name)
 
     components.html(html, height=520, scrolling=False)
 
-    st.divider()
-    st.markdown("### Pulisci la trascrizione con AI")
-    st.caption(
-        "Quando hai fermato la registrazione, incolla qui sotto i segmenti grezzi "
-        "(o trascina dal pannello sopra). L'LLM (gpt-oss-20b via Ollama) corregge "
-        "termini sbagliati, ripetizioni, allucinazioni e normalizza i numeri."
-    )
-    raw_tx = st.text_area(
-        "Trascrizione grezza",
-        height=180,
-        key="tx_raw_to_refine",
-        placeholder="Incolla qui la trascrizione…",
-    )
-    col_b, _ = st.columns([1, 4])
-    do_refine = col_b.button(
-        "Pulisci con AI",
-        type="primary",
-        disabled=not raw_tx.strip(),
-        key="tx_refine_btn",
-    )
-    if do_refine:
-        with st.spinner("Pulizia in corso…"):
-            try:
-                r = requests.post(
-                    f"{API_URL}/transcription/refine",
-                    json={"text": raw_tx, "context": context_text},
-                    timeout=TIMEOUT,
-                )
-                r.raise_for_status()
-                refined = r.json().get("refined", "")
-            except requests.RequestException as exc:
-                st.error(f"Errore API: {exc}")
-            else:
-                st.markdown("**Trascrizione pulita**")
-                st.text_area(
-                    "Refined",
-                    refined,
-                    height=220,
-                    key="tx_refined_out",
-                    label_visibility="collapsed",
-                )
-                st.download_button(
-                    "Scarica .txt",
-                    data=refined,
-                    file_name="trascrizione_pulita.txt",
-                    mime="text/plain",
-                )
 
-    st.divider()
-    st.markdown("### Compilazione automatica questionari")
-    st.caption(
-        "Definisci lo schema dei questionari (JSON). L'LLM analizza la trascrizione "
-        "e propone i valori da inserire campo per campo. Tu accetti o rifiuti."
+elif page == "Real-time STT + EHR":
+    import streamlit.components.v1 as components
+
+    _hero(
+        "Real-time STT + EHR",
+        "Trascrizione live + compilazione automatica dei questionari (loop debounce + LLM).",
     )
 
-    DEFAULT_QUESTIONNAIRES = {
+    st.markdown(
+        '<div class="hc-note">Mentre parli, il sistema accumula la trascrizione e ogni ~3 secondi (debounce) la passa al LLM per aggiornare le proposte di compilazione. Nessun pulsante da premere durante la visita.</div>',
+        unsafe_allow_html=True,
+    )
+
+    EHR_SPECIALTY_GLOSSARIES = {
+        "Oculistica": "visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo",
+        "Cardiologia": "ECG, frequenza cardiaca, ritmo sinusale, fibrillazione atriale, ipertensione, infarto miocardico, angina, scompenso cardiaco, ecocardiogramma, frazione di eiezione, holter, pacemaker, troponina, BNP",
+        "Generale": "anamnesi, sintomi, terapia in atto, diagnosi, esame obiettivo, prescrizione, dosaggio",
+    }
+    EHR_DEFAULT_QUESTIONNAIRES = {
         "Oculistica": [
-            {
-                "id": 1,
-                "name": "Anamnesi",
-                "fields": [
-                    {"name": "allergie", "description": "Allergie note e reazioni avverse a farmaci"},
-                    {"name": "motivo_visita", "description": "Motivo principale della visita"},
-                    {"name": "terapia_preesistente", "description": "Terapie già in corso prima della visita"},
-                    {
-                        "name": "ipertensione",
-                        "description": "Soffre di pressione alta",
-                        "type": "select",
-                        "options": [
-                            {"label": "Sì", "value": "yes"},
-                            {"label": "No", "value": "no"},
-                        ],
-                    },
-                ],
-                "existing_data": {},
-            },
-            {
-                "id": 2,
-                "name": "Esame Obiettivo Oculistico",
-                "fields": [
-                    {"name": "cornea_od", "description": "Aspetto cornea OD"},
-                    {"name": "cornea_os", "description": "Aspetto cornea OS"},
-                    {"name": "cristallino_od", "description": "Aspetto cristallino OD"},
-                    {"name": "cristallino_os", "description": "Aspetto cristallino OS"},
-                    {"name": "sfera_od", "description": "Refrazione sferica OD (diottrie)", "type": "number"},
-                    {"name": "cilindro_od", "description": "Refrazione cilindrica OD (diottrie)", "type": "number"},
-                    {"name": "asse_od", "description": "Asse del cilindro OD (gradi)", "type": "number"},
-                    {"name": "pressione_oculare_od", "description": "Tono oculare OD (mmHg)", "type": "number"},
-                    {"name": "pressione_oculare_os", "description": "Tono oculare OS (mmHg)", "type": "number"},
-                ],
-                "existing_data": {},
-            },
-            {
-                "id": 3,
-                "name": "Diagnosi e Terapia",
-                "fields": [
-                    {"name": "diagnosi", "description": "Diagnosi clinica conclusiva (max 150 caratteri)"},
-                    {"name": "terapia", "description": "Terapia prescritta oggi"},
-                ],
-                "existing_data": {},
-            },
+            {"id": 1, "name": "Anamnesi", "fields": [
+                {"name": "allergie", "description": "Allergie note"},
+                {"name": "motivo_visita", "description": "Motivo principale della visita"},
+                {"name": "terapia_preesistente", "description": "Terapie già in corso"},
+            ], "existing_data": {}},
+            {"id": 2, "name": "Esame Obiettivo Oculistico", "fields": [
+                {"name": "cornea_od", "description": "Aspetto cornea OD"},
+                {"name": "cristallino_od", "description": "Aspetto cristallino OD"},
+                {"name": "sfera_od", "description": "Refrazione sferica OD (diottrie)", "type": "number"},
+                {"name": "cilindro_od", "description": "Refrazione cilindrica OD (diottrie)", "type": "number"},
+                {"name": "asse_od", "description": "Asse del cilindro OD (gradi)", "type": "number"},
+                {"name": "pressione_oculare_od", "description": "Tono oculare OD (mmHg)", "type": "number"},
+                {"name": "pressione_oculare_os", "description": "Tono oculare OS (mmHg)", "type": "number"},
+            ], "existing_data": {}},
+            {"id": 3, "name": "Diagnosi e Terapia", "fields": [
+                {"name": "diagnosi", "description": "Diagnosi clinica (max 150 caratteri)"},
+                {"name": "terapia", "description": "Terapia prescritta oggi"},
+            ], "existing_data": {}},
+        ],
+        "Cardiologia": [
+            {"id": 1, "name": "Anamnesi", "fields": [
+                {"name": "motivo_visita", "description": "Motivo della visita"},
+                {"name": "fattori_rischio", "description": "Fattori di rischio cardiovascolare (fumo, dislipidemia, diabete, familiarità)"},
+                {"name": "terapia_in_atto", "description": "Terapie in corso"},
+            ], "existing_data": {}},
+            {"id": 2, "name": "Esame Obiettivo", "fields": [
+                {"name": "pa_sistolica", "description": "PA sistolica (mmHg)", "type": "number"},
+                {"name": "pa_diastolica", "description": "PA diastolica (mmHg)", "type": "number"},
+                {"name": "fc", "description": "Frequenza cardiaca (bpm)", "type": "number"},
+                {"name": "ritmo", "description": "Ritmo cardiaco"},
+                {"name": "toni", "description": "Toni cardiaci"},
+            ], "existing_data": {}},
+            {"id": 3, "name": "Diagnosi e Terapia", "fields": [
+                {"name": "diagnosi", "description": "Diagnosi"},
+                {"name": "terapia", "description": "Terapia prescritta"},
+            ], "existing_data": {}},
         ],
         "Generale": [
-            {
-                "id": 1,
-                "name": "Anamnesi",
-                "fields": [
-                    {"name": "allergie", "description": "Allergie note"},
-                    {"name": "motivo_visita", "description": "Motivo della visita"},
-                    {"name": "anamnesi_patologica", "description": "Patologie pregresse o in corso"},
-                    {"name": "terapia_in_atto", "description": "Farmaci attualmente assunti"},
-                ],
-                "existing_data": {},
-            },
-            {
-                "id": 2,
-                "name": "Diagnosi e Terapia",
-                "fields": [
-                    {"name": "diagnosi", "description": "Diagnosi conclusiva"},
-                    {"name": "terapia", "description": "Terapia prescritta"},
-                ],
-                "existing_data": {},
-            },
+            {"id": 1, "name": "Anamnesi", "fields": [
+                {"name": "allergie", "description": "Allergie note"},
+                {"name": "motivo_visita", "description": "Motivo della visita"},
+                {"name": "anamnesi_patologica", "description": "Patologie pregresse o in corso"},
+                {"name": "terapia_in_atto", "description": "Farmaci attualmente assunti"},
+            ], "existing_data": {}},
+            {"id": 2, "name": "Diagnosi e Terapia", "fields": [
+                {"name": "diagnosi", "description": "Diagnosi conclusiva"},
+                {"name": "terapia", "description": "Terapia prescritta"},
+            ], "existing_data": {}},
         ],
     }
 
-    default_q_specialty = (
-        specialty if specialty in DEFAULT_QUESTIONNAIRES else "Generale"
-    )
-    if (
-        "tx_q_schema" not in st.session_state
-        or st.session_state.get("tx_q_schema_specialty") != default_q_specialty
-    ):
-        st.session_state["tx_q_schema"] = json.dumps(
-            DEFAULT_QUESTIONNAIRES[default_q_specialty], indent=2, ensure_ascii=False
+    col_a, col_b, col_c = st.columns([1, 1, 1])
+    with col_a:
+        ehr_specialty = st.selectbox(
+            "Specialità",
+            list(EHR_DEFAULT_QUESTIONNAIRES.keys()),
+            key="ehr_specialty",
         )
-        st.session_state["tx_q_schema_specialty"] = default_q_specialty
-
-    schema_text = st.text_area(
-        "Schema questionari (JSON)",
-        key="tx_q_schema",
-        height=260,
-        help='Lista di questionari. Ogni questionario: {id, name, fields:[{name, description, type?, options?}]}',
-    )
-
-    transcript_source = st.radio(
-        "Trascrizione da analizzare",
-        ["Grezza (dal campo sopra)", "Pulita (dopo refine)", "Personalizzata"],
-        horizontal=True,
-        key="tx_extract_src",
-    )
-    if transcript_source == "Pulita (dopo refine)":
-        transcript_to_use = st.session_state.get("tx_refined_out", "")
-    elif transcript_source == "Personalizzata":
-        transcript_to_use = st.text_area(
-            "Trascrizione personalizzata",
-            height=160,
-            key="tx_custom_for_extract",
+    with col_b:
+        ehr_debounce_s = st.number_input(
+            "Debounce LLM (secondi)",
+            min_value=1.0, max_value=15.0, value=3.0, step=0.5,
+            key="ehr_debounce",
+            help="Quanto attendere dopo l'ultimo aggiornamento di trascrizione prima di chiamare l'LLM.",
         )
-    else:
-        transcript_to_use = st.session_state.get("tx_raw_to_refine", "")
+    with col_c:
+        ehr_min_chars = st.number_input(
+            "Soglia minima testo",
+            min_value=10, max_value=500, value=30, step=5,
+            key="ehr_min_chars",
+            help="Sotto questa lunghezza non chiamo l'LLM (evita allucinazioni su saluti).",
+        )
 
-    col_e, _ = st.columns([1, 4])
-    do_extract = col_e.button(
-        "Estrai campi",
-        type="primary",
-        disabled=not (transcript_to_use or "").strip() or not schema_text.strip(),
-        key="tx_extract_btn",
+    ehr_context = st.text_area(
+        "Glossario / contesto clinico",
+        value=EHR_SPECIALTY_GLOSSARIES.get(ehr_specialty, ""),
+        height=80,
+        key=f"ehr_ctx_{ehr_specialty}",
     )
 
-    if do_extract:
-        try:
-            questionnaires_payload = json.loads(schema_text)
-            if not isinstance(questionnaires_payload, list):
-                raise ValueError("Lo schema deve essere una LISTA di questionari.")
-        except (json.JSONDecodeError, ValueError) as exc:
-            st.error(f"Schema JSON non valido: {exc}")
-        else:
-            with st.spinner("Estrazione in corso…"):
-                try:
-                    r = requests.post(
-                        f"{API_URL}/transcription/extract",
-                        json={
-                            "transcript": transcript_to_use,
-                            "questionnaires": questionnaires_payload,
-                            "context": context_text,
-                        },
-                        timeout=TIMEOUT,
-                    )
-                    r.raise_for_status()
-                    data = r.json()
-                except requests.RequestException as exc:
-                    st.error(f"Errore API: {exc}")
-                else:
-                    proposals = data.get("questionnaires", {}) or {}
-                    st.session_state["tx_proposals"] = proposals
-                    st.session_state["tx_proposals_status"] = {
-                        qid: {f: "pending" for f in fields}
-                        for qid, fields in proposals.items()
-                    }
-                    if not proposals:
-                        st.warning(
-                            "L'LLM non ha estratto campi. Output grezzo:"
-                        )
-                        st.code(data.get("raw", ""), language="json")
+    ehr_schema_key = f"ehr_schema_{ehr_specialty}"
+    if ehr_schema_key not in st.session_state:
+        st.session_state[ehr_schema_key] = json.dumps(
+            EHR_DEFAULT_QUESTIONNAIRES[ehr_specialty], indent=2, ensure_ascii=False
+        )
+    ehr_schema = st.text_area(
+        "Schema questionari (JSON, modificabile)",
+        key=ehr_schema_key,
+        height=220,
+    )
 
-    proposals = st.session_state.get("tx_proposals", {})
-    if proposals:
-        st.markdown("**Proposte di compilazione**")
-        # Mappa id -> nome dal payload originale
-        try:
-            qschema = json.loads(st.session_state.get("tx_q_schema", "[]"))
-            name_by_id = {str(q["id"]): q.get("name", str(q["id"])) for q in qschema}
-        except json.JSONDecodeError:
-            name_by_id = {}
+    api_url_for_browser = os.getenv("API_URL_BROWSER", os.getenv("API_URL", "http://localhost:8080"))
+    ws_url = os.getenv("WHISPERLIVE_URL", "ws://localhost:9090")
+    model_name = "ReportAId/medwhisper-large-v3-ita-ct2"
 
-        statuses = st.session_state.setdefault("tx_proposals_status", {})
+    initial_prompt = (
+        f"Visita {ehr_specialty.lower()} in italiano clinico. "
+        f"Termini ricorrenti: {ehr_context.strip()}."
+        if ehr_context.strip()
+        else "Visita medica in italiano clinico."
+    )
 
-        for qid, fields in proposals.items():
-            q_name = name_by_id.get(str(qid), f"Questionario {qid}")
-            st.markdown(f"#### {q_name}")
-            q_statuses = statuses.setdefault(qid, {})
-            for field_name, value in fields.items():
-                cur = q_statuses.get(field_name, "pending")
-                cols = st.columns([2, 4, 1, 1])
-                cols[0].markdown(f"`{field_name}`")
-                cols[1].markdown(
-                    f"<div style='padding:6px 10px;background:#f3f4f6;border-radius:4px;font-family:ui-monospace;font-size:12.5px;'>{json.dumps(value, ensure_ascii=False)}</div>",
-                    unsafe_allow_html=True,
-                )
-                if cols[2].button(
-                    "✓" if cur != "accepted" else "✅",
-                    key=f"acc_{qid}_{field_name}",
-                    help="Accetta",
-                ):
-                    q_statuses[field_name] = "accepted"
-                    st.rerun()
-                if cols[3].button(
-                    "✗" if cur != "rejected" else "❌",
-                    key=f"rej_{qid}_{field_name}",
-                    help="Rifiuta",
-                ):
-                    q_statuses[field_name] = "rejected"
-                    st.rerun()
+    ehr_html = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0; margin: 0; background: transparent; color: #1f2937; font-size: 13px; }
+  .wrap { display: grid; grid-template-columns: 1fr 1.2fr; gap: 14px; }
+  .card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  button { padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid #d1d5db; border-radius: 5px; background: #ffffff; color: #374151; }
+  button:hover:not(:disabled) { background: #f9fafb; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: #1f2937; color: #ffffff; border-color: #1f2937; }
+  button.primary:hover:not(:disabled) { background: #111827; }
+  button.mini { padding: 2px 8px; font-size: 12px; }
+  button.ok { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+  button.ok.active { background: #10b981; color: #ffffff; border-color: #10b981; }
+  button.no { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+  button.no.active { background: #ef4444; color: #ffffff; border-color: #ef4444; }
+  #status { display: inline-flex; align-items: center; gap: 6px; color: #6b7280; font-size: 12px; font-weight: 500; padding: 3px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; }
+  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: #9ca3af; }
+  #status.active .dot { background: #6b7280; }
+  #status.recording .dot { background: #dc2626; }
+  #status.llm .dot { background: #2563eb; }
+  #transcript { padding: 10px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 5px; min-height: 220px; max-height: 320px; overflow-y: auto; line-height: 1.55; }
+  .seg { padding: 5px 8px; background: #ffffff; border: 1px solid #e5e7eb; border-left: 2px solid #6b7280; border-radius: 0 3px 3px 0; margin-bottom: 4px; }
+  .seg .ts { font-family: ui-monospace, Menlo, monospace; font-size: 10px; color: #9ca3af; }
+  .ehr-q { margin-bottom: 16px; }
+  .ehr-q h4 { margin: 0 0 8px 0; font-size: 13px; color: #1f2937; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 6px; align-items: center; padding: 5px 0; border-bottom: 1px dashed #f3f4f6; }
+  .field-row .fname { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: #4b5563; }
+  .field-row .fval { background: #f9fafb; padding: 4px 8px; border-radius: 3px; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: #111827; max-width: 100%; overflow-x: auto; }
+  .field-row.accepted .fval { background: #ecfdf5; }
+  .field-row.rejected .fval { background: #fef2f2; text-decoration: line-through; color: #6b7280; }
+  .empty { text-align: center; color: #9ca3af; padding: 40px 20px; }
+  .meta { font-size: 11px; color: #6b7280; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="controls">
+      <button id="start" class="primary">Avvia</button>
+      <button id="stop" disabled>Ferma</button>
+      <span id="status"><span class="dot"></span><span id="status-text">Pronto</span></span>
+    </div>
+    <div id="transcript"><div class="empty">In attesa…</div></div>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>Proposte EHR</strong>
+      <button id="download" class="mini" disabled>Scarica JSON accettati</button>
+    </div>
+    <div id="ehr"><div class="empty">Le proposte compaiono qui mentre parli.</div></div>
+  </div>
+</div>
+<script>
+const WS_URL = "__WS_URL__";
+const API_URL = "__API_URL__";
+const MODEL_NAME = "__MODEL_NAME__";
+const INITIAL_PROMPT = __INITIAL_PROMPT_JSON__;
+const QUESTIONNAIRES = __QUESTIONNAIRES_JSON__;
+const CONTEXT = __CONTEXT_JSON__;
+const DEBOUNCE_MS = __DEBOUNCE_MS__;
+const MIN_CHARS = __MIN_CHARS__;
 
-        # Bundle accettati
-        accepted = {}
-        for qid, fields in proposals.items():
-            accepted_fields = {
-                f: v
-                for f, v in fields.items()
-                if statuses.get(qid, {}).get(f) == "accepted"
-            }
-            if accepted_fields:
-                accepted[qid] = accepted_fields
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const downloadBtn = document.getElementById("download");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+const transcriptEl = document.getElementById("transcript");
+const ehrEl = document.getElementById("ehr");
+const metaEl = document.getElementById("meta");
 
-        if accepted:
-            st.markdown("**Campi accettati**")
-            st.json(accepted, expanded=False)
-            st.download_button(
-                "Scarica JSON accettati",
-                data=json.dumps(accepted, indent=2, ensure_ascii=False),
-                file_name="questionari_compilati.json",
-                mime="application/json",
-            )
+let ws = null, audioCtx = null, stream = null, source = null, processor = null;
+let segments = [];                  // ultimi segmenti da WhisperLive
+let fullTranscript = "";            // testo cumulativo
+let hasNewData = false;
+let llmRunning = false;
+let debounceTimer = null;
+let llmRuns = 0;
+// proposalsState[qid][fieldName] = { value, status: 'pending'|'accepted'|'rejected' }
+const proposalsState = new Map();
+// nomi questionario id -> label
+const qNameById = new Map();
+QUESTIONNAIRES.forEach(q => qNameById.set(String(q.id), q.name));
+
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function setStatus(t, cls) { statusText.textContent = t; statusEl.className = cls || ""; }
+
+function renderTranscript() {
+  if (segments.length === 0) { transcriptEl.innerHTML = '<div class="empty">In ascolto…</div>'; return; }
+  transcriptEl.innerHTML = segments.map(s =>
+    `<div class="seg"><span class="ts">[${(+s.start).toFixed(1)}s]</span> ${s.text}</div>`
+  ).join("");
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function renderEHR() {
+  if (proposalsState.size === 0) {
+    ehrEl.innerHTML = '<div class="empty">Le proposte compaiono qui mentre parli.</div>';
+    downloadBtn.disabled = true;
+    return;
+  }
+  let html = "";
+  for (const [qid, fields] of proposalsState.entries()) {
+    const qname = qNameById.get(String(qid)) || ("Questionario " + qid);
+    html += `<div class="ehr-q"><h4>${qname}</h4>`;
+    for (const [fname, info] of fields.entries()) {
+      const status = info.status || "pending";
+      const valStr = typeof info.value === "string" ? info.value : JSON.stringify(info.value);
+      html += `<div class="field-row ${status}">
+        <div class="fname">${fname}</div>
+        <div class="fval">${valStr}</div>
+        <button class="mini ok ${status === 'accepted' ? 'active' : ''}" data-qid="${qid}" data-f="${fname}" data-act="accepted">✓</button>
+        <button class="mini no ${status === 'rejected' ? 'active' : ''}" data-qid="${qid}" data-f="${fname}" data-act="rejected">✗</button>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  ehrEl.innerHTML = html;
+  ehrEl.querySelectorAll("button[data-qid]").forEach(btn => {
+    btn.onclick = () => {
+      const qid = btn.dataset.qid, f = btn.dataset.f, act = btn.dataset.act;
+      const fields = proposalsState.get(qid);
+      if (!fields) return;
+      const info = fields.get(f);
+      if (!info) return;
+      info.status = (info.status === act) ? "pending" : act;
+      renderEHR();
+    };
+  });
+  downloadBtn.disabled = ![...proposalsState.values()].some(fs =>
+    [...fs.values()].some(i => i.status === "accepted")
+  );
+}
+
+function mergeProposals(newProps) {
+  // newProps: { qid: { field: value } }
+  for (const [qid, fields] of Object.entries(newProps || {})) {
+    if (!proposalsState.has(qid)) proposalsState.set(qid, new Map());
+    const cur = proposalsState.get(qid);
+    for (const [fname, value] of Object.entries(fields)) {
+      // valori vuoti: skip
+      if (value === null || value === "" || value === "-" || value === "—") continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+      const prev = cur.get(fname);
+      if (prev) {
+        // preservo lo stato utente; aggiorno solo il valore se è cambiato
+        prev.value = value;
+      } else {
+        cur.set(fname, { value, status: "pending" });
+      }
+    }
+  }
+  renderEHR();
+}
+
+function scheduleLLM() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => maybeRunLLM(), DEBOUNCE_MS);
+}
+
+async function maybeRunLLM() {
+  if (llmRunning) return;
+  if (!hasNewData) return;
+  if (fullTranscript.trim().length < MIN_CHARS) return;
+  llmRunning = true;
+  while (hasNewData) {
+    hasNewData = false;
+    const snapshot = fullTranscript;
+    try {
+      setStatus("LLM in elaborazione…", "llm");
+      const t0 = performance.now();
+      const r = await fetch(API_URL.replace(/\\/$/, "") + "/transcription/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: snapshot, questionnaires: QUESTIONNAIRES, context: CONTEXT })
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      mergeProposals(data.questionnaires || {});
+      llmRuns += 1;
+      const ms = (performance.now() - t0).toFixed(0);
+      metaEl.textContent = `Run #${llmRuns} · ${ms} ms · transcript ${snapshot.length} char`;
+      setStatus(ws && ws.readyState === WebSocket.OPEN ? "Registrazione attiva" : "Ferma", "recording");
+    } catch (e) {
+      setStatus("Errore LLM: " + e.message, "");
+    }
+  }
+  llmRunning = false;
+}
+
+downloadBtn.onclick = () => {
+  const accepted = {};
+  for (const [qid, fields] of proposalsState.entries()) {
+    const acc = {};
+    for (const [fname, info] of fields.entries()) {
+      if (info.status === "accepted") acc[fname] = info.value;
+    }
+    if (Object.keys(acc).length > 0) accepted[qid] = acc;
+  }
+  const blob = new Blob([JSON.stringify(accepted, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "ehr_accettati.json";
+  a.click();
+};
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  segments = []; fullTranscript = ""; hasNewData = false;
+  proposalsState.clear(); renderEHR(); renderTranscript();
+  metaEl.textContent = "";
+
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    setStatus("Contesto non sicuro (serve localhost o https)", "");
+    startBtn.disabled = false;
+    return;
+  }
+  setStatus("Apro microfono…", "active");
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 }
+    });
+  } catch (e) { setStatus("Errore microfono: " + e.message, ""); startBtn.disabled = false; return; }
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000, latencyHint: "interactive" });
+  source = audioCtx.createMediaStreamSource(stream);
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  source.connect(processor); processor.connect(audioCtx.destination);
+
+  ws = new WebSocket(WS_URL); ws.binaryType = "arraybuffer";
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      uid: uid(), language: "it", task: "transcribe", model: MODEL_NAME,
+      use_vad: true, same_output_threshold: 3, send_last_n_segments: 6,
+      no_speech_thresh: 0.7,
+      initial_prompt: INITIAL_PROMPT,
+      max_clients: 4, max_connection_time: 1800
+    }));
+    setStatus("Caricamento modello…", "active"); stopBtn.disabled = false;
+  };
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.message === "SERVER_READY") setStatus("Registrazione attiva", "recording");
+    else if (msg.message === "DISCONNECT") setStatus("Disconnesso", "");
+    else if (msg.segments) {
+      segments = msg.segments;
+      // ricostruisco fullTranscript dai segmenti (WhisperLive manda gli ultimi N segmenti completi)
+      const joined = segments.map(s => (s.text || "").trim()).filter(Boolean).join(" ");
+      if (joined !== fullTranscript) {
+        fullTranscript = joined;
+        hasNewData = true;
+        renderTranscript();
+        scheduleLLM();
+      } else {
+        renderTranscript();
+      }
+    }
+  };
+  ws.onerror = () => setStatus("Errore WebSocket", "");
+  ws.onclose = () => setStatus("Connessione chiusa", "");
+  processor.onaudioprocess = (e) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(e.inputBuffer.getChannelData(0).buffer);
+  };
+};
+
+stopBtn.onclick = () => {
+  try { processor && processor.disconnect(); } catch (e) {}
+  try { source && source.disconnect(); } catch (e) {}
+  try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  try { audioCtx && audioCtx.close(); } catch (e) {}
+  try { ws && ws.close(); } catch (e) {}
+  startBtn.disabled = false; stopBtn.disabled = true; setStatus("Stop", "");
+  // run finale per recuperare l'ultimo testo
+  hasNewData = true;
+  scheduleLLM();
+};
+</script>
+</body>
+</html>
+""".replace("__WS_URL__", ws_url) \
+   .replace("__API_URL__", api_url_for_browser) \
+   .replace("__MODEL_NAME__", model_name) \
+   .replace("__INITIAL_PROMPT_JSON__", json.dumps(initial_prompt, ensure_ascii=False)) \
+   .replace("__CONTEXT_JSON__", json.dumps(ehr_context, ensure_ascii=False)) \
+   .replace("__DEBOUNCE_MS__", str(int(ehr_debounce_s * 1000))) \
+   .replace("__MIN_CHARS__", str(int(ehr_min_chars))) \
+   .replace("__QUESTIONNAIRES_JSON__", st.session_state[ehr_schema_key])
+
+    components.html(ehr_html, height=760, scrolling=True)
+
+    st.caption(
+        f"API LLM: `{api_url_for_browser}/transcription/extract` · "
+        f"WhisperLive: `{ws_url}` · "
+        f"Specialità: **{ehr_specialty}** · "
+        f"Debounce: {ehr_debounce_s}s · Soglia: {ehr_min_chars} char"
+    )
 
 
 elif page == "Strutturazione FHIR":
