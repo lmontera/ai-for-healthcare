@@ -116,10 +116,11 @@ def anonymize_document_masked(payload: AnonymizeRequest) -> AnonymizeMaskedRespo
     start_dt = datetime.now()
     t0 = time.perf_counter()
     logger.info(
-        "[anonymize:masked] start=%s bytes=%d model=%s",
+        "[anonymize:masked] start=%s bytes=%d model=%s min_score=%.2f",
         start_dt.strftime("%H:%M:%S"),
         len(image_bytes),
         key,
+        payload.min_score,
     )
 
     ocr = get_ocr_service()
@@ -132,23 +133,57 @@ def anonymize_document_masked(payload: AnonymizeRequest) -> AnonymizeMaskedRespo
     text = ocr_result["text"]
     words = ocr_result["words"]
 
-    pii = get_pii_detection_service()
-    entities = pii.detect(text)
+    # Get entities + scores from the chosen anonymizer if it exposes analyze().
+    # Otherwise fallback to the PII detector (no per-model score).
+    if hasattr(anonymizer, "analyze"):
+        all_entities = anonymizer.analyze(text)
+    else:
+        pii = get_pii_detection_service()
+        all_entities = [
+            {
+                "label": e.label,
+                "text": e.text,
+                "start": e.start,
+                "end": e.end,
+                "score": e.score,
+            }
+            for e in pii.detect(text)
+        ]
 
-    anonymized_text = anonymizer.anonymize(text)
+    # Filter by threshold for actual masking
+    kept = [e for e in all_entities if e["score"] >= payload.min_score]
 
-    masked_png = mask_image_with_entities(image_bytes, words, entities)
+    # Mask text using only kept entities (so threshold also affects text)
+    from app.services.anonymization.utils import mask_text_with_entities
+    anonymized_text = mask_text_with_entities(text, kept)
+
+    # Mask image: build PIIEntity-like objects for mask helper
+    from app.schemas.pii import PIIEntity
+    kept_for_image = [
+        PIIEntity(
+            label=e["label"],
+            text=e["text"],
+            start=e["start"],
+            end=e["end"],
+            score=e["score"],
+        )
+        for e in kept
+    ]
+    masked_png = mask_image_with_entities(image_bytes, words, kept_for_image)
 
     logger.info(
-        "[anonymize:masked] finish=%s elapsed=%.2fs entities=%d",
+        "[anonymize:masked] finish=%s elapsed=%.2fs entities=%d kept=%d",
         datetime.now().strftime("%H:%M:%S"),
         time.perf_counter() - t0,
-        len(entities),
+        len(all_entities),
+        len(kept),
     )
 
     return AnonymizeMaskedResponse(
         ocr_text=text,
         anonymized_text=anonymized_text,
         masked_image_base64=base64.b64encode(masked_png).decode("ascii"),
-        entities_count=len(entities),
+        entities_count=len(kept),
+        entities=all_entities,
+        min_score=payload.min_score,
     )

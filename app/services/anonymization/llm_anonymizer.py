@@ -72,5 +72,10 @@ class LLMAnonymizationService(AnonymizationService):
             {"role": "user", "content": text},
         ]
         logger.info("[anonymize:llm] input_chars=%d", len(text))
-        out = self._llm.chat(messages, max_new_tokens=self._max_new_tokens)
+        out = self._llm.chat(
+            messages,
+            max_new_tokens=self._max_new_tokens,
+            think=False,
+        )
+        logger.info("[anonymize:llm] output_chars=%d", len(out or ""))
         return (out or "").strip()

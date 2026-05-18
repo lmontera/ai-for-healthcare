@@ -84,11 +84,13 @@ def anonymize_document_llm_stream(payload: AnonymizeRequest) -> StreamingRespons
             llm = get_llm_service()
             full_parts: list[str] = []
             if hasattr(llm, "chat_stream"):
-                for delta in llm.chat_stream(messages, max_new_tokens=4096, json_mode=False):
+                for delta in llm.chat_stream(
+                    messages, max_new_tokens=4096, json_mode=False, think=False
+                ):
                     full_parts.append(delta)
                     yield emit({"event": "anonymize_delta", "delta": delta})
             else:
-                txt = llm.chat(messages, max_new_tokens=4096)
+                txt = llm.chat(messages, max_new_tokens=4096, think=False)
                 full_parts.append(txt)
                 yield emit({"event": "anonymize_delta", "delta": txt})
 

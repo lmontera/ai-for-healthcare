@@ -4,6 +4,7 @@ from transformers import pipeline
 
 from app.core.device import pipeline_device
 from app.services.anonymization.base import AnonymizationService
+from app.services.anonymization.utils import mask_text_with_entities
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +23,20 @@ class OpenMedPrivacyFilterService(AnonymizationService):
             device=device,
         )
 
-    def anonymize(self, text: str) -> str:
+    def analyze(self, text: str) -> list[dict]:
         if not text:
-            return text
-
+            return []
         entities = self._pipeline(text)
-        spans = sorted(entities, key=lambda e: e["start"], reverse=True)
+        return [
+            {
+                "label": e["entity_group"],
+                "text": e["word"],
+                "start": int(e["start"]),
+                "end": int(e["end"]),
+                "score": float(e["score"]),
+            }
+            for e in entities
+        ]
 
-        masked = text
-        for entity in spans:
-            label = entity["entity_group"]
-            start, end = entity["start"], entity["end"]
-            masked = f"{masked[:start]}[{label}]{masked[end:]}"
-
-        return masked
+    def anonymize(self, text: str) -> str:
+        return mask_text_with_entities(text, self.analyze(text))

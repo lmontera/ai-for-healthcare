@@ -574,6 +574,16 @@ if page == "Anonimizza documento":
         anon_model_key = None
         st.warning("Non sono riuscito a caricare la lista modelli dall'API — userò il default del server.")
 
+    anon_min_score = st.slider(
+        "Soglia minima confidenza",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.5,
+        step=0.05,
+        key="anon_min_score",
+        help="Entità con confidenza inferiore non vengono mascherate (né nel testo né nell'immagine).",
+    )
+
     uploaded = st.file_uploader(
         "Trascina un documento o sfoglia",
         type=["png", "jpg", "jpeg"],
@@ -595,7 +605,11 @@ if page == "Anonimizza documento":
                     try:
                         r = requests.post(
                             f"{API_URL}/anonymize/masked",
-                            json={"image_base64": image_b64, "model": anon_model_key},
+                            json={
+                                "image_base64": image_b64,
+                                "model": anon_model_key,
+                                "min_score": anon_min_score,
+                            },
                             timeout=TIMEOUT,
                         )
                         r.raise_for_status()
@@ -603,8 +617,8 @@ if page == "Anonimizza documento":
                     except requests.RequestException as exc:
                         st.error(f"Errore API: {exc}")
                     else:
-                        tab_img, tab_txt, tab_ocr = st.tabs(
-                            ["Immagine anonimizzata", "Anonimizzato", "OCR grezzo"]
+                        tab_img, tab_txt, tab_ent, tab_ocr = st.tabs(
+                            ["Immagine anonimizzata", "Anonimizzato", "Entità", "OCR grezzo"]
                         )
                         with tab_img:
                             masked_b64 = data.get("masked_image_base64", "")
@@ -641,6 +655,49 @@ if page == "Anonimizza documento":
                                 file_name="anonymized.txt",
                                 use_container_width=True,
                             )
+                        with tab_ent:
+                            ents = data.get("entities", []) or []
+                            threshold = data.get("min_score", anon_min_score)
+                            if not ents:
+                                st.info("Nessuna entità rilevata.")
+                            else:
+                                kept_n = sum(1 for e in ents if e.get("score", 0) >= threshold)
+                                m1, m2, m3 = st.columns(3)
+                                m1.metric("Entità totali", len(ents))
+                                m2.metric("Mascherate", kept_n)
+                                m3.metric("Soglia", f"{threshold:.2f}")
+
+                                rows = [
+                                    {
+                                        "label": e.get("label", ""),
+                                        "text": e.get("text", ""),
+                                        "start": e.get("start", 0),
+                                        "end": e.get("end", 0),
+                                        "score": float(e.get("score", 0.0)),
+                                        "stato": "mascherata" if e.get("score", 0) >= threshold else "ignorata",
+                                    }
+                                    for e in sorted(
+                                        ents, key=lambda x: x.get("score", 0), reverse=True
+                                    )
+                                ]
+                                st.dataframe(
+                                    rows,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "label": st.column_config.TextColumn("Tipo", width="small"),
+                                        "text": st.column_config.TextColumn("Testo", width="medium"),
+                                        "start": st.column_config.NumberColumn("Inizio", width="small"),
+                                        "end": st.column_config.NumberColumn("Fine", width="small"),
+                                        "score": st.column_config.ProgressColumn(
+                                            "Confidenza",
+                                            format="%.3f",
+                                            min_value=0.0,
+                                            max_value=1.0,
+                                        ),
+                                        "stato": st.column_config.TextColumn("Stato", width="small"),
+                                    },
+                                )
                         with tab_ocr:
                             st.text_area(
                                 "OCR",

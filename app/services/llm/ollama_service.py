@@ -34,6 +34,7 @@ class OllamaLLMService(LLMService):
         messages: list[dict],
         max_new_tokens: int = 1024,
         json_mode: bool = False,
+        think: bool = True,
     ) -> str:
         payload = {
             "model": self._model,
@@ -47,6 +48,8 @@ class OllamaLLMService(LLMService):
         }
         if json_mode:
             payload["format"] = "json"
+        if not think:
+            payload["think"] = False
         url = f"{self._host}/api/chat"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -74,6 +77,7 @@ class OllamaLLMService(LLMService):
         messages: list[dict],
         max_new_tokens: int = 1024,
         json_mode: bool = True,
+        think: bool = True,
     ) -> Iterator[str]:
         payload = {
             "model": self._model,
@@ -87,6 +91,8 @@ class OllamaLLMService(LLMService):
         }
         if json_mode:
             payload["format"] = "json"
+        if not think:
+            payload["think"] = False
         url = f"{self._host}/api/chat"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
