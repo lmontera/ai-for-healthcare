@@ -998,52 +998,88 @@ elif page == "Strutturazione FHIR":
 
         if col_l.button("Struttura in FHIR", type="primary", key="fhir_btn"):
             image_b64 = base64.b64encode(uploaded.getvalue()).decode("utf-8")
-            with st.spinner("Pipeline in corso (OCR → anonimizzazione → LLM)..."):
-                try:
-                    r = requests.post(
-                        f"{API_URL}/fhir/document",
-                        json={"image_base64": image_b64},
-                        timeout=TIMEOUT,
-                    )
+
+            tabs = col_r.tabs(["FHIR", "Anonimizzato", "OCR"])
+            with tabs[0]:
+                status_ph = st.empty()
+                fhir_ph = st.empty()
+                download_ph = st.empty()
+            with tabs[1]:
+                anon_ph = st.empty()
+            with tabs[2]:
+                ocr_ph = st.empty()
+
+            status_ph.info("OCR in corso…")
+            ocr_text = ""
+            anonymized_text = ""
+            fhir_raw = ""
+            fhir_parsed = None
+
+            try:
+                with requests.post(
+                    f"{API_URL}/fhir/document/stream",
+                    json={"image_base64": image_b64},
+                    timeout=TIMEOUT,
+                    stream=True,
+                ) as r:
                     r.raise_for_status()
-                    data = r.json()
-                except requests.RequestException as exc:
-                    col_r.error(f"Errore API: {exc}")
-                else:
-                    tabs = col_r.tabs(["FHIR", "Anonimizzato", "OCR"])
+                    for line in r.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-                    with tabs[0]:
-                        fhir = data.get("fhir")
-                        if fhir is None:
-                            st.warning(
-                                "L'LLM non ha prodotto JSON valido. "
-                                "Output grezzo qui sotto."
+                        kind = event.get("event")
+                        if kind == "ocr":
+                            ocr_text = event.get("text", "")
+                            ocr_ph.text_area(
+                                "Testo OCR",
+                                ocr_text,
+                                height=320,
+                                label_visibility="collapsed",
+                                key="ocr_stream",
                             )
-                            st.code(data.get("fhir_raw", ""), language="text")
-                        else:
-                            st.json(fhir, expanded=2)
-                            st.download_button(
-                                "Scarica Bundle JSON",
-                                data=json.dumps(fhir, indent=2, ensure_ascii=False),
-                                file_name="fhir_bundle.json",
-                                mime="application/json",
+                            status_ph.info("Anonimizzazione in corso…")
+                        elif kind == "anonymized":
+                            anonymized_text = event.get("text", "")
+                            anon_ph.text_area(
+                                "Testo anonimizzato",
+                                anonymized_text,
+                                height=320,
+                                label_visibility="collapsed",
+                                key="anon_stream",
                             )
-
-                    with tabs[1]:
-                        st.text_area(
-                            "Testo anonimizzato",
-                            data.get("anonymized_text", ""),
-                            height=320,
-                            label_visibility="collapsed",
-                        )
-
-                    with tabs[2]:
-                        st.text_area(
-                            "Testo OCR",
-                            data.get("ocr_text", ""),
-                            height=320,
-                            label_visibility="collapsed",
-                        )
+                            status_ph.info("LLM in streaming…")
+                        elif kind == "fhir_delta":
+                            fhir_raw += event.get("delta", "")
+                            fhir_ph.code(fhir_raw, language="json")
+                        elif kind == "fhir_done":
+                            fhir_parsed = event.get("fhir")
+                            fhir_raw = event.get("raw", fhir_raw)
+                            if fhir_parsed is None:
+                                status_ph.warning(
+                                    "JSON non valido — mostro l'output grezzo."
+                                )
+                                fhir_ph.code(fhir_raw, language="text")
+                            else:
+                                status_ph.success("Bundle FHIR completato.")
+                                fhir_ph.json(fhir_parsed, expanded=2)
+                                download_ph.download_button(
+                                    "Scarica Bundle JSON",
+                                    data=json.dumps(
+                                        fhir_parsed, indent=2, ensure_ascii=False
+                                    ),
+                                    file_name="fhir_bundle.json",
+                                    mime="application/json",
+                                )
+                        elif kind == "error":
+                            status_ph.error(
+                                f"Errore pipeline: {event.get('detail', '')}"
+                            )
+            except requests.RequestException as exc:
+                status_ph.error(f"Errore API: {exc}")
 
 
 elif page == "Classificazione immagine":

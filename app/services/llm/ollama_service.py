@@ -2,6 +2,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 
 from app.core.settings import settings
 from app.services.llm.base import LLMService
@@ -34,6 +35,7 @@ class OllamaLLMService(LLMService):
             "messages": messages,
             "stream": False,
             "keep_alive": self._keep_alive,
+            "format": "json",
             "options": {
                 "num_predict": max_new_tokens,
                 "temperature": 0,
@@ -60,3 +62,39 @@ class OllamaLLMService(LLMService):
 
         parsed = json.loads(body)
         return parsed.get("message", {}).get("content", "")
+
+    def chat_stream(
+        self, messages: list[dict], max_new_tokens: int = 1024
+    ) -> Iterator[str]:
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "stream": True,
+            "keep_alive": self._keep_alive,
+            "format": "json",
+            "options": {
+                "num_predict": max_new_tokens,
+                "temperature": 0,
+            },
+        }
+        url = f"{self._host}/api/chat"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            for line in resp:
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                delta = obj.get("message", {}).get("content", "")
+                if delta:
+                    yield delta
+                if obj.get("done"):
+                    break

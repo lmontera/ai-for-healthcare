@@ -20,7 +20,8 @@ Regole rigide:
 - Rispondi SOLO con il JSON Bundle. Niente markdown, niente testo prima o dopo.
 - Inizia con { e termina con }.
 - Usa codici LOINC o SNOMED CT quando ragionevoli; altrimenti lascia il campo display testuale.
-- Per i dati anonimizzati (es. [FIRSTNAME], [LASTNAME], [DATE]) usa "anonymized" come valore."""
+- Per i dati anonimizzati (es. [FIRSTNAME], [LASTNAME], [DATE]) usa "anonymized" come valore.
+- TUTTI i contenuti testuali in lingua italiana: campi `display`, `text`, `text.div`, `title`, `note.text`, `valueString`, descrizioni delle section, ecc. Non tradurre in inglese. I codici (system/code) restano nel loro standard originale (LOINC/SNOMED/UCUM)."""
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
