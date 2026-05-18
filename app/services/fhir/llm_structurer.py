@@ -9,10 +9,10 @@ from app.services.llm.base import LLMService
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """Sei un esperto di informatica medica e dello standard FHIR R4.
-Ricevi un documento medico anonimizzato in italiano (referto, visita, esame).
+Ricevi un documento medico in italiano (referto, visita, esame) ottenuto via OCR.
 Produci un Bundle FHIR R4 in JSON, valido, contenente:
 - Composition (il documento stesso, con type/section)
-- Patient (placeholder anonimo, perché i dati sono stati rimossi)
+- Patient (con i dati identificativi presenti nel documento, se disponibili)
 - Observation (uno per ogni reperto clinico o misurazione)
 - DiagnosticReport (se il documento è un esame strumentale)
 
@@ -20,7 +20,6 @@ Regole rigide:
 - Rispondi SOLO con il JSON Bundle. Niente markdown, niente testo prima o dopo.
 - Inizia con { e termina con }.
 - Usa codici LOINC o SNOMED CT quando ragionevoli; altrimenti lascia il campo display testuale.
-- Per i dati anonimizzati (es. [FIRSTNAME], [LASTNAME], [DATE]) usa "anonymized" come valore.
 - TUTTI i contenuti testuali in lingua italiana: campi `display`, `text`, `text.div`, `title`, `note.text`, `valueString`, descrizioni delle section, ecc. Non tradurre in inglese. I codici (system/code) restano nel loro standard originale (LOINC/SNOMED/UCUM)."""
 
 

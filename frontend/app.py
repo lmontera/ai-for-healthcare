@@ -999,19 +999,16 @@ elif page == "Strutturazione FHIR":
         if col_l.button("Struttura in FHIR", type="primary", key="fhir_btn"):
             image_b64 = base64.b64encode(uploaded.getvalue()).decode("utf-8")
 
-            tabs = col_r.tabs(["FHIR", "Anonimizzato", "OCR"])
+            tabs = col_r.tabs(["FHIR", "OCR"])
             with tabs[0]:
                 status_ph = st.empty()
                 fhir_ph = st.empty()
                 download_ph = st.empty()
             with tabs[1]:
-                anon_ph = st.empty()
-            with tabs[2]:
                 ocr_ph = st.empty()
 
             status_ph.info("OCR in corso…")
             ocr_text = ""
-            anonymized_text = ""
             fhir_raw = ""
             fhir_parsed = None
 
@@ -1040,16 +1037,6 @@ elif page == "Strutturazione FHIR":
                                 height=320,
                                 label_visibility="collapsed",
                                 key="ocr_stream",
-                            )
-                            status_ph.info("Anonimizzazione in corso…")
-                        elif kind == "anonymized":
-                            anonymized_text = event.get("text", "")
-                            anon_ph.text_area(
-                                "Testo anonimizzato",
-                                anonymized_text,
-                                height=320,
-                                label_visibility="collapsed",
-                                key="anon_stream",
                             )
                             status_ph.info("LLM in streaming…")
                         elif kind == "fhir_delta":

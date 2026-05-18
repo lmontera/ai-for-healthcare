@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.core.registry import (
-    get_anonymization_service,
     get_llm_service,
     get_ocr_service,
 )
@@ -62,12 +61,9 @@ def structure_document_stream(payload: FHIRDocumentRequest) -> StreamingResponse
             ocr_text = get_ocr_service().extract_text(image_bytes)
             yield emit({"event": "ocr", "text": ocr_text})
 
-            anonymized = get_anonymization_service().anonymize(ocr_text)
-            yield emit({"event": "anonymized", "text": anonymized})
-
             messages = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": anonymized[:_MAX_INPUT_CHARS]},
+                {"role": "user", "content": ocr_text[:_MAX_INPUT_CHARS]},
             ]
             llm = get_llm_service()
             raw_parts: list[str] = []
