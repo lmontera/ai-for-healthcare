@@ -508,6 +508,7 @@ with st.sidebar:
         "Servizio",
         [
             "Anonimizza documento",
+            "Anonymization with LLM",
             "Rilevamento PII",
             "Trascrizione",
             "Trascrizione live",
@@ -601,6 +602,78 @@ if page == "Anonimizza documento":
     else:
         st.markdown(
             '<div class="hc-empty">Nessun documento caricato. Carica un PNG o JPEG per iniziare.</div>',
+            unsafe_allow_html=True,
+        )
+
+
+elif page == "Anonymization with LLM":
+    _hero(
+        "Anonymization with LLM",
+        "OCR del documento + anonimizzazione testuale tramite gpt-oss-20b via Ollama.",
+    )
+
+    uploaded_llm = st.file_uploader(
+        "Carica un documento medico",
+        type=["png", "jpg", "jpeg"],
+        key="anonllm_uploader",
+    )
+
+    if uploaded_llm is not None:
+        col_doc, col_out = st.columns([1, 1], gap="large")
+        with col_doc:
+            st.markdown('<div class="hc-card-title">Documento</div>', unsafe_allow_html=True)
+            st.image(uploaded_llm, use_container_width=True)
+            run_llm = st.button(
+                "Anonimizza con LLM",
+                type="primary",
+                use_container_width=True,
+                key="anonllm_btn",
+            )
+
+        with col_out:
+            if run_llm:
+                image_b64 = base64.b64encode(uploaded_llm.getvalue()).decode("utf-8")
+                with st.spinner("OCR + LLM in corso..."):
+                    try:
+                        r = requests.post(
+                            f"{API_URL}/anonymize-llm",
+                            json={"image_base64": image_b64},
+                            timeout=TIMEOUT,
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                    except requests.RequestException as exc:
+                        st.error(f"Errore API: {exc}")
+                    else:
+                        tab1, tab2 = st.tabs(["Anonimizzato (LLM)", "OCR grezzo"])
+                        with tab1:
+                            st.markdown(
+                                f'<div class="hc-text-output">'
+                                f'{_highlight_placeholders(data.get("anonymized_text", ""))}'
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                            st.download_button(
+                                "Scarica testo anonimizzato",
+                                data.get("anonymized_text", ""),
+                                file_name="anonymized_llm.txt",
+                                use_container_width=True,
+                            )
+                        with tab2:
+                            st.text_area(
+                                "OCR",
+                                data.get("ocr_text", ""),
+                                height=320,
+                                label_visibility="collapsed",
+                            )
+            else:
+                st.markdown(
+                    '<div class="hc-empty">Premi <b>Anonimizza con LLM</b> per avviare la pipeline OCR + LLM.</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.markdown(
+            '<div class="hc-empty">Nessun documento caricato. Carica un PNG/JPEG per iniziare.</div>',
             unsafe_allow_html=True,
         )
 

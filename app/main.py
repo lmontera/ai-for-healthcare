@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     anonymize,
+    anonymize_llm,
     fhir,
     image_classification,
     pii,
@@ -46,6 +47,7 @@ app.add_middleware(
 )
 
 app.include_router(anonymize.router)
+app.include_router(anonymize_llm.router)
 app.include_router(pii.router)
 app.include_router(transcribe.router)
 app.include_router(fhir.router)
