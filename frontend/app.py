@@ -607,7 +607,7 @@ if page == "Anonimizza documento":
         with col2:
             if run:
                 image_b64 = base64.b64encode(uploaded.getvalue()).decode("utf-8")
-                with st.spinner("Elaborazione in corso..."):
+                with st.spinner("Stiamo elaborando la tua richiesta"):
                     try:
                         r = requests.post(
                             f"{API_URL}/anonymize/masked",
@@ -750,7 +750,7 @@ elif page == "Anonymization with LLM":
         with col_out:
             if run_llm:
                 image_b64 = base64.b64encode(uploaded_llm.getvalue()).decode("utf-8")
-                with st.spinner("OCR + PII + LLM in corso..."):
+                with st.spinner("Stiamo elaborando la tua richiesta"):
                     try:
                         r = requests.post(
                             f"{API_URL}/anonymize-llm/masked",
@@ -841,7 +841,7 @@ elif page == "Rilevamento PII":
         )
 
     if run:
-        with st.spinner("Analisi in corso..."):
+        with st.spinner("Stiamo elaborando la tua richiesta"):
             try:
                 r = requests.post(
                     f"{API_URL}/pii/detect",
@@ -1289,7 +1289,7 @@ elif page == "Real-time STT + EHR":
   </div>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <strong>Proposte EHR</strong>
+      <strong>Cartella Clinica</strong>
       <button id="download" class="mini" disabled>Scarica JSON accettati</button>
     </div>
     <div id="ehr"><div class="empty">Le proposte compaiono qui mentre parli.</div></div>
@@ -1320,7 +1320,10 @@ let segments = [];                  // ultimi segmenti da WhisperLive
 let fullTranscript = "";            // testo cumulativo
 let hasNewData = false;
 let llmRunning = false;
-let debounceTimer = null;
+let pollTimer = null;               // throttle periodico
+let lastLlmAt = 0;                  // timestamp ultimo run
+let nextLlmAt = 0;                  // timestamp prossimo run pianificato
+let countdownTimer = null;
 let llmRuns = 0;
 // proposalsState[qid][fieldName] = { value, status: 'pending'|'accepted'|'rejected' }
 const proposalsState = new Map();
@@ -1400,14 +1403,48 @@ function mergeProposals(newProps) {
 }
 
 function scheduleLLM() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => maybeRunLLM(), DEBOUNCE_MS);
+  // Mark that there's new data and ensure the periodic poller is running.
+  // The poller fires every DEBOUNCE_MS regardless, so the LLM keeps updating
+  // even while the user is talking continuously (no debounce-reset trap).
+  if (!nextLlmAt) nextLlmAt = Date.now() + DEBOUNCE_MS;
+  if (!pollTimer) {
+    pollTimer = setInterval(() => maybeRunLLM(), 500);
+  }
+  if (!countdownTimer) {
+    countdownTimer = setInterval(updateCountdownLabel, 250);
+  }
+}
+
+function stopScheduler() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
+function updateCountdownLabel() {
+  if (llmRunning) {
+    setStatus("LLM in elaborazione…", "llm");
+    return;
+  }
+  if (hasNewData && nextLlmAt) {
+    const remaining = Math.max(0, Math.ceil((nextLlmAt - Date.now()) / 1000));
+    if (remaining > 0) {
+      setStatus(`LLM in ${remaining}s · trascrizione attiva`, "recording");
+    } else {
+      setStatus("LLM in elaborazione…", "llm");
+    }
+  } else {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      setStatus("In ascolto · trascrizione attiva", "recording");
+    }
+  }
 }
 
 async function maybeRunLLM() {
   if (llmRunning) return;
   if (!hasNewData) return;
   if (fullTranscript.trim().length < MIN_CHARS) return;
+  // throttle: only fire once per DEBOUNCE_MS window
+  if (Date.now() < nextLlmAt) return;
   llmRunning = true;
   while (hasNewData) {
     hasNewData = false;
@@ -1426,12 +1463,15 @@ async function maybeRunLLM() {
       llmRuns += 1;
       const ms = (performance.now() - t0).toFixed(0);
       metaEl.textContent = `Run #${llmRuns} · ${ms} ms · transcript ${snapshot.length} char`;
-      setStatus(ws && ws.readyState === WebSocket.OPEN ? "Registrazione attiva" : "Ferma", "recording");
+      lastLlmAt = Date.now();
+      nextLlmAt = lastLlmAt + DEBOUNCE_MS;
     } catch (e) {
       setStatus("Errore LLM: " + e.message, "");
     }
   }
   llmRunning = false;
+  // schedule next window
+  nextLlmAt = Date.now() + DEBOUNCE_MS;
 }
 
 downloadBtn.onclick = () => {
@@ -1453,6 +1493,7 @@ downloadBtn.onclick = () => {
 startBtn.onclick = async () => {
   startBtn.disabled = true;
   segments = []; fullTranscript = ""; hasNewData = false;
+  nextLlmAt = 0; lastLlmAt = 0; llmRuns = 0;
   proposalsState.clear(); renderEHR(); renderTranscript();
   metaEl.textContent = "";
 
@@ -1523,16 +1564,19 @@ startBtn.onclick = async () => {
   };
 };
 
-stopBtn.onclick = () => {
+stopBtn.onclick = async () => {
   try { processor && processor.disconnect(); } catch (e) {}
   try { source && source.disconnect(); } catch (e) {}
   try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
   try { audioCtx && audioCtx.close(); } catch (e) {}
   try { ws && ws.close(); } catch (e) {}
-  startBtn.disabled = false; stopBtn.disabled = true; setStatus("Stop", "");
-  // run finale per recuperare l'ultimo testo
+  startBtn.disabled = false; stopBtn.disabled = true;
+  // run finale immediato per recuperare l'ultimo testo
   hasNewData = true;
-  scheduleLLM();
+  nextLlmAt = 0;
+  await maybeRunLLM();
+  stopScheduler();
+  setStatus("Stop", "");
 };
 </script>
 </body>
@@ -1585,7 +1629,7 @@ elif page == "Strutturazione FHIR":
             with tabs[1]:
                 ocr_ph = st.empty()
 
-            status_ph.info("OCR in corso…")
+            status_ph.info("Stiamo elaborando la tua richiesta")
             ocr_text = ""
             fhir_raw = ""
             fhir_parsed = None
@@ -1616,7 +1660,7 @@ elif page == "Strutturazione FHIR":
                                 label_visibility="collapsed",
                                 key="ocr_stream",
                             )
-                            status_ph.info("LLM in streaming…")
+                            status_ph.info("Stiamo elaborando la tua richiesta")
                         elif kind == "fhir_delta":
                             fhir_raw += event.get("delta", "")
                             fhir_ph.code(fhir_raw, language="json")
@@ -1624,9 +1668,7 @@ elif page == "Strutturazione FHIR":
                             fhir_parsed = event.get("fhir")
                             fhir_raw = event.get("raw", fhir_raw)
                             if fhir_parsed is None:
-                                status_ph.warning(
-                                    "JSON non valido — mostro l'output grezzo."
-                                )
+                                status_ph.empty()
                                 fhir_ph.code(fhir_raw, language="text")
                             else:
                                 status_ph.success("Bundle FHIR completato.")
@@ -1674,7 +1716,7 @@ elif page == "Risultati Laboratorio":
         with col_r:
             if run_lab:
                 image_b64 = base64.b64encode(uploaded_lab.getvalue()).decode("utf-8")
-                with st.spinner("OCR + estrazione LLM in corso…"):
+                with st.spinner("Stiamo elaborando la tua richiesta"):
                     try:
                         r = requests.post(
                             f"{API_URL}/lab-results",
@@ -1880,7 +1922,7 @@ elif page == "Classificazione documento":
         with col_r:
             if run_doc:
                 image_b64 = base64.b64encode(uploaded_doc.getvalue()).decode("utf-8")
-                with st.spinner("OCR + classificazione LLM in corso…"):
+                with st.spinner("Stiamo elaborando la tua richiesta"):
                     try:
                         r = requests.post(
                             f"{API_URL}/document/classify",
@@ -1991,7 +2033,7 @@ elif page == "Classificazione immagine":
                 if labels:
                     payload["candidate_labels"] = labels
 
-                with st.spinner("Classificazione in corso..."):
+                with st.spinner("Stiamo elaborando la tua richiesta"):
                     try:
                         r = requests.post(
                             f"{API_URL}/image/classify",
