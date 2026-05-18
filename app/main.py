@@ -10,6 +10,7 @@ from app.api.routes import (
     anonymize_llm,
     fhir,
     image_classification,
+    lab_results,
     pii,
     transcribe,
     transcription_extract,
@@ -54,6 +55,7 @@ app.include_router(fhir.router)
 app.include_router(image_classification.router)
 app.include_router(transcription_refine.router)
 app.include_router(transcription_extract.router)
+app.include_router(lab_results.router)
 
 
 @app.get("/health")

@@ -515,6 +515,7 @@ with st.sidebar:
             "Trascrizione live",
             "Real-time STT + EHR",
             "Strutturazione FHIR",
+            "Risultati Laboratorio",
             "Classificazione immagine",
         ],
         index=0,
@@ -1639,6 +1640,159 @@ elif page == "Strutturazione FHIR":
                             )
             except requests.RequestException as exc:
                 status_ph.error(f"Errore API: {exc}")
+
+
+elif page == "Risultati Laboratorio":
+    _hero(
+        "Risultati Laboratorio",
+        "OCR + LLM per estrarre i valori di laboratorio in JSON strutturato. "
+        "Grafico a barre per la posizione di ciascun valore rispetto al range.",
+    )
+
+    uploaded_lab = st.file_uploader(
+        "Carica referto di laboratorio (PNG/JPEG)",
+        type=["png", "jpg", "jpeg"],
+        key="lab_uploader",
+    )
+
+    if uploaded_lab is not None:
+        col_l, col_r = st.columns([1, 2], gap="large")
+        with col_l:
+            st.image(uploaded_lab, use_container_width=True)
+            run_lab = st.button(
+                "Estrai risultati",
+                type="primary",
+                use_container_width=True,
+                key="lab_btn",
+            )
+
+        with col_r:
+            if run_lab:
+                image_b64 = base64.b64encode(uploaded_lab.getvalue()).decode("utf-8")
+                with st.spinner("OCR + estrazione LLM in corso…"):
+                    try:
+                        r = requests.post(
+                            f"{API_URL}/lab-results",
+                            json={"image_base64": image_b64},
+                            timeout=TIMEOUT,
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                    except requests.RequestException as exc:
+                        st.error(f"Errore API: {exc}")
+                    else:
+                        results = data.get("results", []) or []
+                        tab_chart, tab_json, tab_ocr = st.tabs(
+                            ["Grafico", "JSON", "OCR grezzo"]
+                        )
+
+                        def _bar_html(res: dict) -> str:
+                            name = html.escape(str(res.get("name", "")))
+                            value = res.get("value")
+                            unit = res.get("unit") or ""
+                            mn = res.get("min_range_value")
+                            mx = res.get("max_range_value")
+                            if value is None:
+                                return (
+                                    f'<div style="padding:6px 0;color:#9ca3af;">'
+                                    f'<b>{name}</b> — valore non disponibile</div>'
+                                )
+                            # decide color
+                            below = mn is not None and value < mn
+                            above = mx is not None and value > mx
+                            in_range = (not below) and (not above)
+                            color = "#2563eb" if in_range else "#dc2626"
+                            # scale: from 0 (or min*0.5) to max(value, max_range)*1.3
+                            scale_min = 0.0
+                            ref_lo = mn if mn is not None else value
+                            ref_hi = mx if mx is not None else value
+                            scale_max = max(value, ref_hi if mx is not None else value) * 1.3
+                            if scale_max <= 0:
+                                scale_max = max(value * 1.3, 1.0)
+                            # avoid divide by zero
+                            span = max(scale_max - scale_min, 1e-9)
+
+                            def pct(x: float) -> float:
+                                return max(0.0, min(100.0, (x - scale_min) / span * 100.0))
+
+                            ref_left = pct(ref_lo) if mn is not None else 0.0
+                            ref_width = max(0.0, (pct(ref_hi) if mx is not None else 100.0) - ref_left)
+                            value_left = pct(value)
+
+                            unit_str = f" {html.escape(unit)}" if unit else ""
+                            range_str = ""
+                            if mn is not None and mx is not None:
+                                range_str = f"v.n. {mn} – {mx}"
+                            elif mn is not None:
+                                range_str = f"v.n. ≥ {mn}"
+                            elif mx is not None:
+                                range_str = f"v.n. ≤ {mx}"
+
+                            badge = ""
+                            if below:
+                                badge = '<span style="color:#dc2626;font-weight:600;">▼ basso</span>'
+                            elif above:
+                                badge = '<span style="color:#dc2626;font-weight:600;">▲ alto</span>'
+                            else:
+                                badge = '<span style="color:#2563eb;font-weight:600;">nei limiti</span>'
+
+                            return f"""
+<div style="padding:10px 0;border-bottom:1px solid #f3f4f6;">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+    <div style="font-weight:600;color:#1f2937;">{name}</div>
+    <div style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#374151;">
+      <span style="font-weight:600;">{value}</span>{unit_str}
+      &nbsp; <span style="color:#9ca3af;">{range_str}</span>
+      &nbsp; {badge}
+    </div>
+  </div>
+  <div style="position:relative;height:10px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+    <div style="position:absolute;top:0;left:{ref_left:.1f}%;width:{ref_width:.1f}%;height:100%;background:#cbd5e1;"></div>
+    <div style="position:absolute;top:0;left:0;width:{value_left:.1f}%;height:100%;background:{color};border-radius:4px 0 0 4px;"></div>
+  </div>
+</div>
+"""
+
+                        with tab_chart:
+                            if not results:
+                                st.info("Nessun risultato di laboratorio rilevato nel referto.")
+                            else:
+                                m1, m2, m3 = st.columns(3)
+                                total = len(results)
+                                out_of_range = sum(
+                                    1
+                                    for r in results
+                                    if r.get("value") is not None
+                                    and (
+                                        (r.get("min_range_value") is not None and r["value"] < r["min_range_value"])
+                                        or (r.get("max_range_value") is not None and r["value"] > r["max_range_value"])
+                                    )
+                                )
+                                m1.metric("Risultati", total)
+                                m2.metric("Fuori range", out_of_range)
+                                m3.metric("Nei limiti", total - out_of_range)
+                                st.markdown(
+                                    '<div style="margin-top:8px;">'
+                                    + "".join(_bar_html(r) for r in results)
+                                    + "</div>",
+                                    unsafe_allow_html=True,
+                                )
+                        with tab_json:
+                            st.json(results, expanded=True)
+                            st.download_button(
+                                "Scarica JSON",
+                                data=json.dumps(results, indent=2, ensure_ascii=False),
+                                file_name="lab_results.json",
+                                mime="application/json",
+                                use_container_width=True,
+                            )
+                        with tab_ocr:
+                            st.text_area(
+                                "OCR",
+                                data.get("ocr_text", ""),
+                                height=320,
+                                label_visibility="collapsed",
+                            )
 
 
 elif page == "Classificazione immagine":
