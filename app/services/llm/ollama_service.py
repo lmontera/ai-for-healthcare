@@ -29,18 +29,24 @@ class OllamaLLMService(LLMService):
             self._keep_alive,
         )
 
-    def chat(self, messages: list[dict], max_new_tokens: int = 1024) -> str:
+    def chat(
+        self,
+        messages: list[dict],
+        max_new_tokens: int = 1024,
+        json_mode: bool = False,
+    ) -> str:
         payload = {
             "model": self._model,
             "messages": messages,
             "stream": False,
             "keep_alive": self._keep_alive,
-            "format": "json",
             "options": {
                 "num_predict": max_new_tokens,
                 "temperature": 0,
             },
         }
+        if json_mode:
+            payload["format"] = "json"
         url = f"{self._host}/api/chat"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -64,19 +70,23 @@ class OllamaLLMService(LLMService):
         return parsed.get("message", {}).get("content", "")
 
     def chat_stream(
-        self, messages: list[dict], max_new_tokens: int = 1024
+        self,
+        messages: list[dict],
+        max_new_tokens: int = 1024,
+        json_mode: bool = True,
     ) -> Iterator[str]:
         payload = {
             "model": self._model,
             "messages": messages,
             "stream": True,
             "keep_alive": self._keep_alive,
-            "format": "json",
             "options": {
                 "num_predict": max_new_tokens,
                 "temperature": 0,
             },
         }
+        if json_mode:
+            payload["format"] = "json"
         url = f"{self._host}/api/chat"
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(

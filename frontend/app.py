@@ -769,9 +769,44 @@ elif page == "Trascrizione live":
     )
 
     st.markdown(
-        '<div class="hc-note">Su CPU con large-v3 i parziali hanno qualche secondo di lag. Il primo avvio carica il modello (può richiedere alcuni minuti).</div>',
+        '<div class="hc-note">Imposta la specialità e (facoltativo) un contesto clinico prima di registrare: viene usato come <i>initial prompt</i> per orientare il modello e ridurre allucinazioni.</div>',
         unsafe_allow_html=True,
     )
+
+    SPECIALTY_GLOSSARIES = {
+        "Oculistica": "visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, occlusione venosa, edema maculare, neovascolarizzazione, biomicroscopia, oftalmoscopia, OCT, fluorangiografia, angio-OCT, campo visivo, ecografia oculare, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo",
+        "Cardiologia": "ECG, elettrocardiogramma, frequenza cardiaca, ritmo sinusale, fibrillazione atriale, flutter, extrasistole, blocco di branca, ipertensione arteriosa, ipotensione, infarto miocardico acuto, IMA, angina pectoris, scompenso cardiaco, insufficienza cardiaca, ecocardiogramma, frazione di eiezione, FE, holter, ergometrica, ablazione transcatetere, pacemaker, defibrillatore, ICD, stenosi mitralica, insufficienza aortica, prolasso mitralico, dispnea, sincope, dolore toracico, troponina, BNP",
+        "Neurologia": "cefalea, emicrania, vertigine, parestesia, ipoestesia, paresi, paralisi, afasia, disartria, atassia, ictus ischemico, ictus emorragico, TIA, epilessia, crisi tonico-cloniche, sclerosi multipla, morbo di Parkinson, tremore, demenza, Alzheimer, EEG, EMG, risonanza magnetica encefalo, RMN, TC cranio, liquor, mielo-encefalite",
+        "Ortopedia": "frattura, distorsione, lussazione, contusione, lesione legamentosa, menisco, crociato anteriore, ACL, crociato posteriore, PCL, tendinopatia, capsulite adesiva, spalla congelata, ernia discale, lombalgia, sciatica, scoliosi, osteoartrosi, osteoporosi, protesi anca, protesi ginocchio, artroscopia, radiografia, RX, risonanza magnetica articolare",
+        "Oncologia": "neoplasia, tumore, carcinoma, adenocarcinoma, sarcoma, linfoma, leucemia, metastasi, stadiazione TNM, biopsia, citologia, immunoistochimica, chemioterapia, radioterapia, immunoterapia, target therapy, anticorpo monoclonale, performance status, ECOG, PET, TC con mezzo di contrasto, marker tumorali, CEA, CA 125, PSA, AFP",
+        "Pediatria": "neonato, lattante, bambino, peso alla nascita, percentile, vaccinazioni, esantema, otite, faringite, bronchiolite, asma, dermatite atopica, allergia alimentare, sviluppo psicomotorio, anamnesi familiare, allattamento al seno",
+        "Generale": "anamnesi, sintomi, terapia in atto, diagnosi differenziale, esame obiettivo, paziente, prescrizione, dosaggio, posologia, controindicazioni, follow-up, esami ematochimici",
+        "Personalizzato": "",
+    }
+
+    col_sp, col_ctx = st.columns([1, 3])
+    with col_sp:
+        specialty = st.selectbox(
+            "Specialità",
+            list(SPECIALTY_GLOSSARIES.keys()),
+            key="tx_specialty",
+        )
+    with col_ctx:
+        context_text = st.text_area(
+            "Contesto / glossario (modificabile)",
+            value=SPECIALTY_GLOSSARIES[specialty],
+            height=110,
+            key=f"tx_context_{specialty}",
+            help="Termini e contesto suggeriti al modello. Aggiungi nomi di farmaci, parametri specifici della visita, ecc.",
+        )
+
+    if context_text.strip():
+        initial_prompt = (
+            f"Trascrizione di visita {specialty.lower()} in italiano clinico. "
+            f"Termini ricorrenti: {context_text.strip()}."
+        )
+    else:
+        initial_prompt = "Trascrizione medica in italiano clinico."
 
     ws_url = os.getenv("WHISPERLIVE_URL", "ws://localhost:9090")
     model_name = "ReportAId/medwhisper-large-v3-ita-ct2"
@@ -878,6 +913,7 @@ elif page == "Trascrizione live":
   <div class="controls">
     <button id="start" class="primary">Avvia registrazione</button>
     <button id="stop" disabled>Ferma</button>
+    <button id="copy" disabled>Copia tutto</button>
     <span id="status"><span class="dot"></span><span id="status-text">Pronto</span></span>
   </div>
   <div id="transcript">
@@ -887,9 +923,11 @@ elif page == "Trascrizione live":
 <script>
 const WS_URL = "__WS_URL__";
 const MODEL_NAME = "__MODEL_NAME__";
+const INITIAL_PROMPT = __INITIAL_PROMPT_JSON__;
 
 const startBtn = document.getElementById("start");
 const stopBtn = document.getElementById("stop");
+const copyBtn = document.getElementById("copy");
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
 const transcriptEl = document.getElementById("transcript");
@@ -911,7 +949,30 @@ function render() {
     `<div class="segment"><span class="ts">[${(+s.start).toFixed(1)}s → ${(+s.end).toFixed(1)}s]</span>${s.text}</div>`
   ).join("");
   transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  copyBtn.disabled = segments.length === 0;
 }
+
+function fullText() {
+  return segments.map(s => (s.text || "").trim()).filter(Boolean).join(" ");
+}
+
+copyBtn.onclick = async () => {
+  const text = fullText();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Copiato negli appunti", "active");
+  } catch (e) {
+    // fallback: selezione manuale
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); setStatus("Copiato", "active"); }
+    catch (err) { setStatus("Copia non riuscita", ""); }
+    document.body.removeChild(ta);
+  }
+};
 
 startBtn.onclick = async () => {
   startBtn.disabled = true;
@@ -943,7 +1004,14 @@ startBtn.onclick = async () => {
   setStatus("Apro microfono...", "active");
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 16000,
+        sampleSize: 16
+      }
     });
   } catch (e) {
     setStatus("Errore microfono: " + e.message, "");
@@ -951,11 +1019,46 @@ startBtn.onclick = async () => {
     return;
   }
 
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+    sampleRate: 16000,
+    latencyHint: "interactive"
+  });
   source = audioCtx.createMediaStreamSource(stream);
-  processor = audioCtx.createScriptProcessor(2048, 1, 1);
+
+  // AudioWorklet: gira su thread audio dedicato, niente drop/jitter dal main thread
+  const workletCode = `
+class PCMProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.buf = [];
+    this.chunk = 4096; // 256 ms @ 16 kHz, miglior contesto per Whisper
+  }
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
+    const ch = input[0];
+    for (let i = 0; i < ch.length; i++) this.buf.push(ch[i]);
+    while (this.buf.length >= this.chunk) {
+      const slice = this.buf.splice(0, this.chunk);
+      this.port.postMessage(new Float32Array(slice));
+    }
+    return true;
+  }
+}
+registerProcessor('pcm-processor', PCMProcessor);
+`;
+  const blob = new Blob([workletCode], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    await audioCtx.audioWorklet.addModule(blobUrl);
+  } catch (e) {
+    setStatus("AudioWorklet non supportato: " + e.message, "");
+    startBtn.disabled = false;
+    return;
+  }
+  processor = new AudioWorkletNode(audioCtx, 'pcm-processor');
   source.connect(processor);
-  processor.connect(audioCtx.destination);
+  // NB: NON colleghiamo a destination per evitare eco/feedback
 
   setStatus("Connessione WS...", "active");
   ws = new WebSocket(WS_URL);
@@ -968,10 +1071,10 @@ startBtn.onclick = async () => {
       task: "transcribe",
       model: MODEL_NAME,
       use_vad: true,
-      same_output_threshold: 5,
-      send_last_n_segments: 10,
-      no_speech_thresh: 0.45,
-      initial_prompt: "Visita oculistica. Anamnesi e referto in italiano. Termini: visus, acuità visiva, diottrie, miopia, ipermetropia, astigmatismo, presbiopia, cornea, cristallino, retina, macula, fovea, iride, pupilla, sclera, congiuntiva, coroide, nervo ottico, papilla, vitreo, camera anteriore, tonometria, pressione intraoculare, PIO, IOP, glaucoma, cataratta, retinopatia diabetica, maculopatia, degenerazione maculare, distacco di retina, occlusione venosa, edema maculare, neovascolarizzazione, biomicroscopia, oftalmoscopia, OCT, fluorangiografia, angio-OCT, campo visivo, ecografia oculare, FACO, IOL, LASIK, PRK, vitrectomia, blefarite, congiuntivite, uveite, cheratite, ambliopia, strabismo.",
+      same_output_threshold: 3,
+      send_last_n_segments: 6,
+      no_speech_thresh: 0.7,
+      initial_prompt: INITIAL_PROMPT,
       max_clients: 4,
       max_connection_time: 600
     };
@@ -996,10 +1099,9 @@ startBtn.onclick = async () => {
   ws.onerror = () => setStatus("Errore WebSocket", "");
   ws.onclose = () => setStatus("Connessione chiusa", "");
 
-  processor.onaudioprocess = (e) => {
+  processor.port.onmessage = (e) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const data = e.inputBuffer.getChannelData(0);
-    ws.send(data.buffer);
+    ws.send(e.data.buffer);
   };
 };
 
@@ -1016,9 +1118,59 @@ stopBtn.onclick = () => {
 </script>
 </body>
 </html>
-""".replace("__WS_URL__", ws_url).replace("__MODEL_NAME__", model_name)
+""".replace("__WS_URL__", ws_url).replace("__MODEL_NAME__", model_name).replace(
+        "__INITIAL_PROMPT_JSON__", json.dumps(initial_prompt, ensure_ascii=False)
+    )
 
     components.html(html, height=520, scrolling=False)
+
+    st.divider()
+    st.markdown("### Pulisci la trascrizione con AI")
+    st.caption(
+        "Quando hai fermato la registrazione, incolla qui sotto i segmenti grezzi "
+        "(o trascina dal pannello sopra). L'LLM (gpt-oss-20b via Ollama) corregge "
+        "termini sbagliati, ripetizioni, allucinazioni e normalizza i numeri."
+    )
+    raw_tx = st.text_area(
+        "Trascrizione grezza",
+        height=180,
+        key="tx_raw_to_refine",
+        placeholder="Incolla qui la trascrizione…",
+    )
+    col_b, _ = st.columns([1, 4])
+    do_refine = col_b.button(
+        "Pulisci con AI",
+        type="primary",
+        disabled=not raw_tx.strip(),
+        key="tx_refine_btn",
+    )
+    if do_refine:
+        with st.spinner("Pulizia in corso…"):
+            try:
+                r = requests.post(
+                    f"{API_URL}/transcription/refine",
+                    json={"text": raw_tx, "context": context_text},
+                    timeout=TIMEOUT,
+                )
+                r.raise_for_status()
+                refined = r.json().get("refined", "")
+            except requests.RequestException as exc:
+                st.error(f"Errore API: {exc}")
+            else:
+                st.markdown("**Trascrizione pulita**")
+                st.text_area(
+                    "Refined",
+                    refined,
+                    height=220,
+                    key="tx_refined_out",
+                    label_visibility="collapsed",
+                )
+                st.download_button(
+                    "Scarica .txt",
+                    data=refined,
+                    file_name="trascrizione_pulita.txt",
+                    mime="text/plain",
+                )
 
 
 elif page == "Strutturazione FHIR":

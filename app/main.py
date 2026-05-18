@@ -4,7 +4,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.routes import anonymize, fhir, image_classification, pii, transcribe
+from app.api.routes import (
+    anonymize,
+    fhir,
+    image_classification,
+    pii,
+    transcribe,
+    transcription_refine,
+)
 from app.whisperlive_server import start_whisperlive_background
 
 logging.basicConfig(
@@ -33,6 +40,7 @@ app.include_router(pii.router)
 app.include_router(transcribe.router)
 app.include_router(fhir.router)
 app.include_router(image_classification.router)
+app.include_router(transcription_refine.router)
 
 
 @app.get("/health")

@@ -57,7 +57,9 @@ class LLMFHIRStructurer(FHIRStructuringService):
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": text},
         ]
-        raw = self._llm.chat(messages, max_new_tokens=self._max_new_tokens)
+        raw = self._llm.chat(
+            messages, max_new_tokens=self._max_new_tokens, json_mode=True
+        )
         parsed = _extract_json(raw)
         if parsed is None:
             logger.warning("[fhir] LLM output is not valid JSON; returning raw")
