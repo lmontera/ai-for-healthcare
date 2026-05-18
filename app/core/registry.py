@@ -7,7 +7,7 @@ from app.services.fhir.llm_structurer import LLMFHIRStructurer
 from app.services.image_classification.base import ImageClassificationService
 from app.services.image_classification.clip import CLIPImageClassificationService
 from app.services.llm.base import LLMService
-from app.services.llm.gpt_oss import GPTOSS20BService
+from app.services.llm.ollama_service import OllamaLLMService
 from app.services.ocr.base import OCRService
 from app.services.ocr.doctr import DocTROCRService
 from app.services.pii_detection.base import PIIDetectionService
@@ -39,7 +39,7 @@ def get_transcription_service() -> TranscriptionService:
 
 @lru_cache(maxsize=1)
 def get_llm_service() -> LLMService:
-    return GPTOSS20BService()
+    return OllamaLLMService()
 
 
 @lru_cache(maxsize=1)
