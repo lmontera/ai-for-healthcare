@@ -633,39 +633,76 @@ elif page == "Anonymization with LLM":
         with col_out:
             if run_llm:
                 image_b64 = base64.b64encode(uploaded_llm.getvalue()).decode("utf-8")
-                with st.spinner("OCR + LLM in corso..."):
-                    try:
-                        r = requests.post(
-                            f"{API_URL}/anonymize-llm",
-                            json={"image_base64": image_b64},
-                            timeout=TIMEOUT,
-                        )
+
+                tab1, tab2 = st.tabs(["Anonimizzato (LLM)", "OCR grezzo"])
+                with tab1:
+                    status_ph = st.empty()
+                    anon_ph = st.empty()
+                    download_ph = st.empty()
+                with tab2:
+                    ocr_ph = st.empty()
+
+                status_ph.info("OCR in corso…")
+                ocr_text_acc = ""
+                anon_text_acc = ""
+                anon_final = ""
+
+                try:
+                    with requests.post(
+                        f"{API_URL}/anonymize-llm/stream",
+                        json={"image_base64": image_b64},
+                        timeout=TIMEOUT,
+                        stream=True,
+                    ) as r:
                         r.raise_for_status()
-                        data = r.json()
-                    except requests.RequestException as exc:
-                        st.error(f"Errore API: {exc}")
-                    else:
-                        tab1, tab2 = st.tabs(["Anonimizzato (LLM)", "OCR grezzo"])
-                        with tab1:
-                            st.markdown(
-                                f'<div class="hc-text-output">'
-                                f'{_highlight_placeholders(data.get("anonymized_text", ""))}'
-                                f"</div>",
-                                unsafe_allow_html=True,
-                            )
-                            st.download_button(
-                                "Scarica testo anonimizzato",
-                                data.get("anonymized_text", ""),
-                                file_name="anonymized_llm.txt",
-                                use_container_width=True,
-                            )
-                        with tab2:
-                            st.text_area(
-                                "OCR",
-                                data.get("ocr_text", ""),
-                                height=320,
-                                label_visibility="collapsed",
-                            )
+                        for line in r.iter_lines(decode_unicode=True):
+                            if not line:
+                                continue
+                            try:
+                                event = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+
+                            kind = event.get("event")
+                            if kind == "ocr":
+                                ocr_text_acc = event.get("text", "")
+                                ocr_ph.text_area(
+                                    "Testo OCR",
+                                    ocr_text_acc,
+                                    height=320,
+                                    label_visibility="collapsed",
+                                    key="anonllm_ocr_stream",
+                                )
+                                status_ph.info("LLM in streaming…")
+                            elif kind == "anonymize_delta":
+                                anon_text_acc += event.get("delta", "")
+                                anon_ph.markdown(
+                                    f'<div class="hc-text-output">'
+                                    f'{_highlight_placeholders(anon_text_acc)}'
+                                    f"</div>",
+                                    unsafe_allow_html=True,
+                                )
+                            elif kind == "anonymize_done":
+                                anon_final = event.get("anonymized_text", anon_text_acc)
+                                anon_ph.markdown(
+                                    f'<div class="hc-text-output">'
+                                    f'{_highlight_placeholders(anon_final)}'
+                                    f"</div>",
+                                    unsafe_allow_html=True,
+                                )
+                                status_ph.success("Anonimizzazione completata.")
+                                download_ph.download_button(
+                                    "Scarica testo anonimizzato",
+                                    anon_final,
+                                    file_name="anonymized_llm.txt",
+                                    use_container_width=True,
+                                )
+                            elif kind == "error":
+                                status_ph.error(
+                                    f"Errore pipeline: {event.get('detail', '')}"
+                                )
+                except requests.RequestException as exc:
+                    status_ph.error(f"Errore API: {exc}")
             else:
                 st.markdown(
                     '<div class="hc-empty">Premi <b>Anonimizza con LLM</b> per avviare la pipeline OCR + LLM.</div>',
@@ -1034,7 +1071,7 @@ elif page == "Real-time STT + EHR":
         ],
     }
 
-    col_a, col_b, col_c = st.columns([1, 1, 1])
+    col_a, col_b, col_c, col_d = st.columns([1, 1, 1, 1])
     with col_a:
         ehr_specialty = st.selectbox(
             "Specialità",
@@ -1043,18 +1080,34 @@ elif page == "Real-time STT + EHR":
         )
     with col_b:
         ehr_debounce_s = st.number_input(
-            "Debounce LLM (secondi)",
+            "Debounce LLM (s)",
             min_value=1.0, max_value=15.0, value=3.0, step=0.5,
             key="ehr_debounce",
             help="Quanto attendere dopo l'ultimo aggiornamento di trascrizione prima di chiamare l'LLM.",
         )
     with col_c:
         ehr_min_chars = st.number_input(
-            "Soglia minima testo",
+            "Soglia testo",
             min_value=10, max_value=500, value=30, step=5,
             key="ehr_min_chars",
             help="Sotto questa lunghezza non chiamo l'LLM (evita allucinazioni su saluti).",
         )
+    with col_d:
+        ehr_sensitivity = st.slider(
+            "Sensibilità mic",
+            min_value=1, max_value=5, value=2,
+            key="ehr_sensitivity",
+            help="1 = ignora rumori e silenzi (anti-allucinazione). 5 = cattura tutto.",
+        )
+
+    EHR_SENS_PARAMS = {
+        1: {"rms": 0.020, "vad_threshold": 0.70, "no_speech": 0.85, "min_speech_ms": 500, "min_silence_ms": 800},
+        2: {"rms": 0.012, "vad_threshold": 0.60, "no_speech": 0.75, "min_speech_ms": 350, "min_silence_ms": 600},
+        3: {"rms": 0.008, "vad_threshold": 0.50, "no_speech": 0.60, "min_speech_ms": 250, "min_silence_ms": 400},
+        4: {"rms": 0.004, "vad_threshold": 0.40, "no_speech": 0.50, "min_speech_ms": 200, "min_silence_ms": 300},
+        5: {"rms": 0.000, "vad_threshold": 0.35, "no_speech": 0.40, "min_speech_ms": 150, "min_silence_ms": 200},
+    }
+    ehr_sens = EHR_SENS_PARAMS[ehr_sensitivity]
 
     ehr_context = st.text_area(
         "Glossario / contesto clinico",
@@ -1078,12 +1131,9 @@ elif page == "Real-time STT + EHR":
     ws_url = os.getenv("WHISPERLIVE_URL", "ws://localhost:9090")
     model_name = "ReportAId/medwhisper-large-v3-ita-ct2"
 
-    initial_prompt = (
-        f"Visita {ehr_specialty.lower()} in italiano clinico. "
-        f"Termini ricorrenti: {ehr_context.strip()}."
-        if ehr_context.strip()
-        else "Visita medica in italiano clinico."
-    )
+    # NB: il glossario NON va nell'initial_prompt di Whisper (causa hallucination
+    # da "prompt leak" durante i silenzi). Va invece SOLO al LLM via CONTEXT.
+    initial_prompt = f"Visita {ehr_specialty.lower()} in italiano."
 
     ehr_html = """
 <!DOCTYPE html>
@@ -1151,6 +1201,7 @@ const QUESTIONNAIRES = __QUESTIONNAIRES_JSON__;
 const CONTEXT = __CONTEXT_JSON__;
 const DEBOUNCE_MS = __DEBOUNCE_MS__;
 const MIN_CHARS = __MIN_CHARS__;
+const SENS = __SENS_JSON__;
 
 const startBtn = document.getElementById("start");
 const stopBtn = document.getElementById("stop");
@@ -1324,7 +1375,13 @@ startBtn.onclick = async () => {
     ws.send(JSON.stringify({
       uid: uid(), language: "it", task: "transcribe", model: MODEL_NAME,
       use_vad: true, same_output_threshold: 3, send_last_n_segments: 6,
-      no_speech_thresh: 0.7,
+      no_speech_thresh: SENS.no_speech,
+      vad_parameters: {
+        threshold: SENS.vad_threshold,
+        min_speech_duration_ms: SENS.min_speech_ms,
+        min_silence_duration_ms: SENS.min_silence_ms,
+        speech_pad_ms: 200
+      },
       initial_prompt: INITIAL_PROMPT,
       max_clients: 4, max_connection_time: 1800
     }));
@@ -1352,7 +1409,14 @@ startBtn.onclick = async () => {
   ws.onclose = () => setStatus("Connessione chiusa", "");
   processor.onaudioprocess = (e) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(e.inputBuffer.getChannelData(0).buffer);
+    const data = e.inputBuffer.getChannelData(0);
+    if (SENS.rms > 0) {
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      const rms = Math.sqrt(sum / data.length);
+      if (rms < SENS.rms) return;  // chunk troppo silenzioso → non inviare
+    }
+    ws.send(data.buffer);
   };
 };
 
@@ -1377,6 +1441,7 @@ stopBtn.onclick = () => {
    .replace("__CONTEXT_JSON__", json.dumps(ehr_context, ensure_ascii=False)) \
    .replace("__DEBOUNCE_MS__", str(int(ehr_debounce_s * 1000))) \
    .replace("__MIN_CHARS__", str(int(ehr_min_chars))) \
+   .replace("__SENS_JSON__", json.dumps(ehr_sens)) \
    .replace("__QUESTIONNAIRES_JSON__", st.session_state[ehr_schema_key])
 
     components.html(ehr_html, height=760, scrolling=True)

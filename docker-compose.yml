@@ -41,6 +41,7 @@ services:
       - "8501:8501"
     environment:
       - API_URL=${API_URL:-http://api:8000}
+      - API_URL_BROWSER=${API_URL_BROWSER:-${API_URL:-http://localhost:8080}}
       - API_TIMEOUT=${API_TIMEOUT:-300}
       - WHISPERLIVE_URL=${WHISPERLIVE_URL:-ws://localhost:9090}
 
