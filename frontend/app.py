@@ -1,6 +1,8 @@
 import base64
+import html
 import json
 import os
+import re
 from collections import Counter
 
 import requests
@@ -38,6 +40,46 @@ def _color(label: str) -> str:
 
 def _text_color(label: str) -> str:
     return ENTITY_TEXT_COLORS.get(label.lower(), "#374151")
+
+
+PLACEHOLDER_COLORS = {
+    "FIRSTNAME": ("#fecaca", "#991b1b"),
+    "LASTNAME": ("#fecaca", "#991b1b"),
+    "NAME": ("#fecaca", "#991b1b"),
+    "PERSON": ("#fecaca", "#991b1b"),
+    "PATIENT": ("#fecaca", "#991b1b"),
+    "DATE": ("#fbcfe8", "#9d174d"),
+    "DOB": ("#fbcfe8", "#9d174d"),
+    "TIME": ("#fbcfe8", "#9d174d"),
+    "EMAIL": ("#bbf7d0", "#166534"),
+    "PHONE": ("#bfdbfe", "#1e40af"),
+    "FAX": ("#bfdbfe", "#1e40af"),
+    "ADDRESS": ("#fde68a", "#92400e"),
+    "CITY": ("#fde68a", "#92400e"),
+    "ZIP": ("#fde68a", "#92400e"),
+    "URL": ("#ddd6fe", "#5b21b6"),
+    "ID": ("#c7d2fe", "#3730a3"),
+    "SSN": ("#c7d2fe", "#3730a3"),
+    "MRN": ("#c7d2fe", "#3730a3"),
+    "ACCOUNT": ("#c7d2fe", "#3730a3"),
+}
+
+_PLACEHOLDER_RE = re.compile(r"\[([A-Z][A-Z0-9_]*)\]")
+
+
+def _highlight_placeholders(text: str) -> str:
+    escaped = html.escape(text)
+
+    def repl(m: re.Match) -> str:
+        label = m.group(1)
+        bg, fg = PLACEHOLDER_COLORS.get(label, ("#e5e7eb", "#374151"))
+        return (
+            f'<span style="background:{bg};color:{fg};padding:2px 6px;'
+            f'border-radius:4px;font-weight:600;font-size:0.82em;'
+            f'letter-spacing:0.4px;margin:0 2px;">[{label}]</span>'
+        )
+
+    return _PLACEHOLDER_RE.sub(repl, escaped).replace("\n", "<br/>")
 
 
 def _highlight(text: str, entities: list[dict]) -> str:
@@ -531,11 +573,11 @@ if page == "Anonimizza documento":
                     else:
                         tab1, tab2 = st.tabs(["Anonimizzato", "OCR grezzo"])
                         with tab1:
-                            st.text_area(
-                                "Output",
-                                data["anonymized_text"],
-                                height=320,
-                                label_visibility="collapsed",
+                            st.markdown(
+                                f'<div class="hc-text-output">'
+                                f'{_highlight_placeholders(data["anonymized_text"])}'
+                                f"</div>",
+                                unsafe_allow_html=True,
                             )
                             st.download_button(
                                 "Scarica testo anonimizzato",
