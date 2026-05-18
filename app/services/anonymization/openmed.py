@@ -8,7 +8,7 @@ from app.services.anonymization.base import AnonymizationService
 logger = logging.getLogger(__name__)
 
 _MODEL_NAME = "OpenMed/privacy-filter-multilingual"
-
+_MODEL_NAME = "openai/privacy-filter"
 
 class OpenMedPrivacyFilterService(AnonymizationService):
     def __init__(self, model_name: str = _MODEL_NAME) -> None:

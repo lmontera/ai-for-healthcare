@@ -658,79 +658,66 @@ elif page == "Anonymization with LLM":
         with col_out:
             if run_llm:
                 image_b64 = base64.b64encode(uploaded_llm.getvalue()).decode("utf-8")
-
-                tab1, tab2 = st.tabs(["Anonimizzato (LLM)", "OCR grezzo"])
-                with tab1:
-                    status_ph = st.empty()
-                    anon_ph = st.empty()
-                    download_ph = st.empty()
-                with tab2:
-                    ocr_ph = st.empty()
-
-                status_ph.info("OCR in corso…")
-                ocr_text_acc = ""
-                anon_text_acc = ""
-                anon_final = ""
-
-                try:
-                    with requests.post(
-                        f"{API_URL}/anonymize-llm/stream",
-                        json={"image_base64": image_b64},
-                        timeout=TIMEOUT,
-                        stream=True,
-                    ) as r:
+                with st.spinner("OCR + PII + LLM in corso..."):
+                    try:
+                        r = requests.post(
+                            f"{API_URL}/anonymize-llm/masked",
+                            json={"image_base64": image_b64},
+                            timeout=TIMEOUT,
+                        )
                         r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=True):
-                            if not line:
-                                continue
-                            try:
-                                event = json.loads(line)
-                            except json.JSONDecodeError:
-                                continue
-
-                            kind = event.get("event")
-                            if kind == "ocr":
-                                ocr_text_acc = event.get("text", "")
-                                ocr_ph.text_area(
-                                    "Testo OCR",
-                                    ocr_text_acc,
-                                    height=320,
-                                    label_visibility="collapsed",
-                                    key="anonllm_ocr_stream",
-                                )
-                                status_ph.info("LLM in streaming…")
-                            elif kind == "anonymize_delta":
-                                anon_text_acc += event.get("delta", "")
-                                anon_ph.markdown(
-                                    f'<div class="hc-text-output">'
-                                    f'{_highlight_placeholders(anon_text_acc)}'
-                                    f"</div>",
-                                    unsafe_allow_html=True,
-                                )
-                            elif kind == "anonymize_done":
-                                anon_final = event.get("anonymized_text", anon_text_acc)
-                                anon_ph.markdown(
-                                    f'<div class="hc-text-output">'
-                                    f'{_highlight_placeholders(anon_final)}'
-                                    f"</div>",
-                                    unsafe_allow_html=True,
-                                )
-                                status_ph.success("Anonimizzazione completata.")
-                                download_ph.download_button(
-                                    "Scarica testo anonimizzato",
-                                    anon_final,
-                                    file_name="anonymized_llm.txt",
-                                    use_container_width=True,
-                                )
-                            elif kind == "error":
-                                status_ph.error(
-                                    f"Errore pipeline: {event.get('detail', '')}"
-                                )
-                except requests.RequestException as exc:
-                    status_ph.error(f"Errore API: {exc}")
+                        data = r.json()
+                    except requests.RequestException as exc:
+                        st.error(f"Errore API: {exc}")
+                    else:
+                        tab_img, tab_txt, tab_ocr = st.tabs(
+                            ["Immagine anonimizzata", "Anonimizzato (LLM)", "OCR grezzo"]
+                        )
+                        with tab_img:
+                            masked_b64 = data.get("masked_image_base64", "")
+                            n_ent = data.get("entities_count", 0)
+                            if masked_b64:
+                                try:
+                                    masked_bytes = base64.b64decode(masked_b64)
+                                except (binascii.Error, ValueError):
+                                    masked_bytes = b""
+                                if masked_bytes:
+                                    st.image(masked_bytes, use_container_width=True)
+                                    st.caption(f"PII coperti: {n_ent}")
+                                    st.download_button(
+                                        "Scarica immagine anonimizzata (PNG)",
+                                        data=masked_bytes,
+                                        file_name="anonymized_llm.png",
+                                        mime="image/png",
+                                        use_container_width=True,
+                                    )
+                                else:
+                                    st.warning("Immagine anonimizzata non disponibile.")
+                            else:
+                                st.warning("Immagine anonimizzata non restituita dall'API.")
+                        with tab_txt:
+                            st.markdown(
+                                f'<div class="hc-text-output">'
+                                f'{_highlight_placeholders(data.get("anonymized_text", ""))}'
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                            st.download_button(
+                                "Scarica testo anonimizzato",
+                                data.get("anonymized_text", ""),
+                                file_name="anonymized_llm.txt",
+                                use_container_width=True,
+                            )
+                        with tab_ocr:
+                            st.text_area(
+                                "OCR",
+                                data.get("ocr_text", ""),
+                                height=320,
+                                label_visibility="collapsed",
+                            )
             else:
                 st.markdown(
-                    '<div class="hc-empty">Premi <b>Anonimizza con LLM</b> per avviare la pipeline OCR + LLM.</div>',
+                    '<div class="hc-empty">Premi <b>Anonimizza con LLM</b> per avviare la pipeline OCR + PII + LLM.</div>',
                     unsafe_allow_html=True,
                 )
     else:
