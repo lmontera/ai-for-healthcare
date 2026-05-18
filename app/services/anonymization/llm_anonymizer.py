@@ -113,7 +113,7 @@ def _spans_from_entities(text: str, llm_entities: list[dict]) -> list[dict]:
 
 
 class LLMAnonymizationService(AnonymizationService):
-    def __init__(self, llm: LLMService, max_new_tokens: int = 8192) -> None:
+    def __init__(self, llm: LLMService, max_new_tokens: int = 4096) -> None:
         self._llm = llm
         self._max_new_tokens = max_new_tokens
 
@@ -129,7 +129,7 @@ class LLMAnonymizationService(AnonymizationService):
             messages,
             max_new_tokens=self._max_new_tokens,
             json_mode=True,
-            think=False,
+            think=True,
         )
         raw = raw or ""
         logger.info("[anonymize:llm] output_chars=%d head=%r", len(raw), raw[:200])
