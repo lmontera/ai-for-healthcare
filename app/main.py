@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     anonymize,
     anonymize_llm,
+    document_classify,
     fhir,
     image_classification,
     lab_results,
@@ -56,6 +57,7 @@ app.include_router(image_classification.router)
 app.include_router(transcription_refine.router)
 app.include_router(transcription_extract.router)
 app.include_router(lab_results.router)
+app.include_router(document_classify.router)
 
 
 @app.get("/health")

@@ -472,7 +472,11 @@ st.markdown(
 )
 
 
+_LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "logo_digitizers.png")
+
 with st.sidebar:
+    if os.path.exists(_LOGO_PATH):
+        st.image(_LOGO_PATH, use_container_width=True)
     st.markdown(
         """
 <div class="hc-brand">
@@ -516,6 +520,7 @@ with st.sidebar:
             "Real-time STT + EHR",
             "Strutturazione FHIR",
             "Risultati Laboratorio",
+            "Classificazione documento",
             "Classificazione immagine",
         ],
         index=0,
@@ -1819,6 +1824,133 @@ elif page == "Risultati Laboratorio":
                                 "OCR",
                                 data.get("ocr_text", ""),
                                 height=320,
+                                label_visibility="collapsed",
+                            )
+
+
+elif page == "Classificazione documento":
+    _hero(
+        "Classificazione documento",
+        "OCR + LLM per assegnare al documento una categoria clinica tra quelle disponibili.",
+    )
+
+    @st.cache_data(ttl=300)
+    def _fetch_doc_categories():
+        try:
+            r = requests.get(f"{API_URL}/document/categories", timeout=10)
+            r.raise_for_status()
+            return r.json().get("categories", [])
+        except requests.RequestException:
+            return []
+
+    cats = _fetch_doc_categories()
+    if cats:
+        chips_html = "".join(
+            f'<span style="display:inline-block;padding:3px 10px;margin:2px 4px 2px 0;'
+            f'background:#e0e7ff;color:#3730a3;border-radius:999px;font-size:11.5px;'
+            f'font-weight:500;">{html.escape(c.get("label", c.get("key", "")))}</span>'
+            for c in cats
+        )
+        st.markdown(
+            f'<div style="margin:8px 0 16px 0;"><b>Categorie disponibili:</b><br/>{chips_html}</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning(
+            "Impossibile caricare le categorie dal server. Il classificatore userà il default lato API."
+        )
+
+    uploaded_doc = st.file_uploader(
+        "Carica un documento (PNG/JPEG)",
+        type=["png", "jpg", "jpeg"],
+        key="doc_classify_uploader",
+    )
+
+    if uploaded_doc is not None:
+        col_l, col_r = st.columns([1, 1], gap="large")
+        with col_l:
+            st.image(uploaded_doc, use_container_width=True)
+            run_doc = st.button(
+                "Classifica documento",
+                type="primary",
+                use_container_width=True,
+                key="doc_classify_btn",
+            )
+
+        with col_r:
+            if run_doc:
+                image_b64 = base64.b64encode(uploaded_doc.getvalue()).decode("utf-8")
+                with st.spinner("OCR + classificazione LLM in corso…"):
+                    try:
+                        r = requests.post(
+                            f"{API_URL}/document/classify",
+                            json={"image_base64": image_b64},
+                            timeout=TIMEOUT,
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                    except requests.RequestException as exc:
+                        st.error(f"Errore API: {exc}")
+                    else:
+                        chosen_key = data.get("category", "")
+                        chosen_label = data.get("label", chosen_key)
+                        confidence = data.get("confidence") or 0.0
+                        reasoning = data.get("reasoning") or ""
+                        scores = data.get("scores", {}) or {}
+
+                        # Big result banner
+                        st.markdown(
+                            f"""
+<div style="padding:16px;background:linear-gradient(135deg,#eef2ff,#dbeafe);
+            border:1px solid #c7d2fe;border-radius:8px;margin-bottom:12px;">
+  <div style="font-size:11px;letter-spacing:0.5px;text-transform:uppercase;
+              color:#4338ca;font-weight:600;">Categoria assegnata</div>
+  <div style="font-size:22px;font-weight:700;color:#1f2937;margin:4px 0;">
+    {html.escape(chosen_label)}
+  </div>
+  <div style="font-size:12px;color:#374151;">
+    <code style="background:#fff;padding:2px 6px;border-radius:3px;">{html.escape(chosen_key)}</code>
+    &nbsp;·&nbsp;
+    Confidenza: <b>{confidence:.1%}</b>
+  </div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
+                        if reasoning:
+                            st.caption(f"💡 {reasoning}")
+
+                        # Ranking of all scores
+                        if scores:
+                            cat_label_map = {c["key"]: c.get("label", c["key"]) for c in cats}
+                            rows = [
+                                {
+                                    "categoria": cat_label_map.get(k, k),
+                                    "key": k,
+                                    "score": float(v),
+                                }
+                                for k, v in scores.items()
+                            ]
+                            rows.sort(key=lambda x: x["score"], reverse=True)
+                            st.markdown("**Distribuzione score**")
+                            st.dataframe(
+                                rows,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "categoria": st.column_config.TextColumn("Categoria", width="medium"),
+                                    "key": st.column_config.TextColumn("Key", width="small"),
+                                    "score": st.column_config.ProgressColumn(
+                                        "Score", format="%.3f", min_value=0.0, max_value=1.0
+                                    ),
+                                },
+                            )
+
+                        with st.expander("OCR grezzo"):
+                            st.text_area(
+                                "OCR",
+                                data.get("ocr_text", ""),
+                                height=240,
                                 label_visibility="collapsed",
                             )
 
