@@ -19,23 +19,36 @@ NON includere:
 - titoli di sezione, intestazioni, totali, note
 
 Per ogni risultato di laboratorio estrai:
-- "name": nome dell'analita (es. "Emoglobina", "Glicemia", "Colesterolo totale")
-- "value": valore numerico misurato (numero JSON, NON stringa). Se mancante: null.
-- "unit": unità di misura (es. "g/dL", "mg/dL", "mmol/L", "%"). Se mancante: null.
+- "name": nome dell'analita (es. "Emoglobina", "Glicemia", "HIV", "Colesterolo totale")
+- "value": valore NUMERICO misurato (numero JSON, NON stringa). Lascia null se il
+  valore non è numerico o se è solo qualitativo.
+- "value_text": valore TESTUALE/qualitativo (es. "Negativo", "Positivo", "Assente",
+  "Presente", "Tracce", "Normale", "Patologico"). Lascia null se il valore è numerico.
+- "unit": unità di misura (es. "g/dL", "mg/dL", "mmol/L", "%"). Lascia null se mancante
+  o se il risultato è qualitativo senza unità.
 - "min_range_value": estremo inferiore del range di riferimento (numero o null)
 - "max_range_value": estremo superiore del range di riferimento (numero o null)
+
+Esattamente UNO tra "value" e "value_text" deve essere valorizzato (l'altro = null).
+Risultati senza alcun valore (né numerico né testuale) devono essere OMESSI.
 
 Regole sui numeri:
 - Virgola decimale italiana convertita in punto ("4,5" -> 4.5).
 - Se il range è espresso come "< 200" -> min_range_value=null, max_range_value=200.
 - Se il range è "> 60" -> min_range_value=60, max_range_value=null.
 - Se il range è "5-10" -> min_range_value=5, max_range_value=10.
-- Se il valore è qualitativo (es. "negativo", "presente") OMETTI il risultato.
+
+Regole sui valori testuali:
+- Normalizza maiuscola iniziale ("negativo" -> "Negativo", "POSITIVO" -> "Positivo").
+- Per risultati testuali min_range_value e max_range_value sono SEMPRE null.
 
 Output: SOLO JSON con questa forma:
 {
   "results": [
-    {"name": "...", "value": 14.5, "unit": "g/dL", "min_range_value": 12.0, "max_range_value": 15.5},
+    {"name": "Emoglobina", "value": 14.5, "value_text": null, "unit": "g/dL",
+     "min_range_value": 12.0, "max_range_value": 15.5},
+    {"name": "HIV", "value": null, "value_text": "Negativo", "unit": null,
+     "min_range_value": null, "max_range_value": null},
     ...
   ]
 }
@@ -109,10 +122,26 @@ class LabResultsExtractor:
             name = (r.get("name") or "").strip()
             if not name:
                 continue
+            value_num = _to_float(r.get("value"))
+            value_text = r.get("value_text")
+            if isinstance(value_text, str):
+                value_text = value_text.strip() or None
+            else:
+                value_text = None
+            # if value is null but original text is qualitative, promote string to value_text
+            if value_num is None and value_text is None:
+                raw_val = r.get("value")
+                if isinstance(raw_val, str) and raw_val.strip():
+                    value_text = raw_val.strip()
+            if value_num is None and value_text is None:
+                continue  # skip results with no value at all
+            if value_text:
+                value_text = value_text[:1].upper() + value_text[1:].lower() if len(value_text) > 1 else value_text.upper()
             results.append(
                 {
                     "name": name,
-                    "value": _to_float(r.get("value")),
+                    "value": value_num,
+                    "value_text": value_text,
                     "unit": (r.get("unit") or None),
                     "min_range_value": _to_float(r.get("min_range_value")),
                     "max_range_value": _to_float(r.get("max_range_value")),

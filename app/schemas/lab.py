@@ -4,6 +4,10 @@ from pydantic import BaseModel, Field
 class LabResult(BaseModel):
     name: str
     value: float | None = None
+    value_text: str | None = Field(
+        default=None,
+        description="Qualitative value (e.g., 'Negativo', 'Positivo', 'Assente') when not numeric.",
+    )
     unit: str | None = None
     min_range_value: float | None = None
     max_range_value: float | None = None

@@ -1686,12 +1686,38 @@ elif page == "Risultati Laboratorio":
                             ["Grafico", "JSON", "OCR grezzo"]
                         )
 
+                        def _chip_color(text: str) -> tuple[str, str]:
+                            t = (text or "").strip().lower()
+                            favorable = {"negativo", "assente", "normale", "nei limiti", "nei norma"}
+                            unfavorable = {"positivo", "presente", "patologico", "anormale", "alterato", "elevato", "aumentato", "ridotto"}
+                            if t in favorable:
+                                return ("#dcfce7", "#166534")  # green
+                            if t in unfavorable:
+                                return ("#fee2e2", "#991b1b")  # red
+                            return ("#e5e7eb", "#374151")  # neutral gray
+
                         def _bar_html(res: dict) -> str:
                             name = html.escape(str(res.get("name", "")))
                             value = res.get("value")
+                            value_text = res.get("value_text")
                             unit = res.get("unit") or ""
                             mn = res.get("min_range_value")
                             mx = res.get("max_range_value")
+
+                            # Qualitative result -> chip
+                            if value is None and value_text:
+                                bg, fg = _chip_color(value_text)
+                                vt = html.escape(value_text)
+                                return f"""
+<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f3f4f6;">
+  <div style="font-weight:600;color:#1f2937;">{name}</div>
+  <span style="display:inline-block;padding:4px 12px;background:{bg};color:{fg};
+               border-radius:999px;font-size:12px;font-weight:600;letter-spacing:0.3px;">
+    {vt}
+  </span>
+</div>
+"""
+
                             if value is None:
                                 return (
                                     f'<div style="padding:6px 0;color:#9ca3af;">'
@@ -1757,20 +1783,22 @@ elif page == "Risultati Laboratorio":
                             if not results:
                                 st.info("Nessun risultato di laboratorio rilevato nel referto.")
                             else:
-                                m1, m2, m3 = st.columns(3)
+                                m1, m2, m3, m4 = st.columns(4)
                                 total = len(results)
+                                numeric = [r for r in results if r.get("value") is not None]
+                                qualitative = [r for r in results if r.get("value") is None and r.get("value_text")]
                                 out_of_range = sum(
                                     1
-                                    for r in results
-                                    if r.get("value") is not None
-                                    and (
+                                    for r in numeric
+                                    if (
                                         (r.get("min_range_value") is not None and r["value"] < r["min_range_value"])
                                         or (r.get("max_range_value") is not None and r["value"] > r["max_range_value"])
                                     )
                                 )
                                 m1.metric("Risultati", total)
-                                m2.metric("Fuori range", out_of_range)
-                                m3.metric("Nei limiti", total - out_of_range)
+                                m2.metric("Numerici fuori range", out_of_range)
+                                m3.metric("Numerici nei limiti", len(numeric) - out_of_range)
+                                m4.metric("Qualitativi", len(qualitative))
                                 st.markdown(
                                     '<div style="margin-top:8px;">'
                                     + "".join(_bar_html(r) for r in results)
