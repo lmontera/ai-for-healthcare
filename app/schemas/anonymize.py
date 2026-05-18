@@ -16,3 +16,12 @@ class AnonymizeTextRequest(BaseModel):
 
 class AnonymizeTextResponse(BaseModel):
     anonymized_text: str
+
+
+class AnonymizeMaskedResponse(BaseModel):
+    ocr_text: str
+    anonymized_text: str
+    masked_image_base64: str = Field(
+        ..., description="PNG image with PII regions covered by black boxes (base64)"
+    )
+    entities_count: int

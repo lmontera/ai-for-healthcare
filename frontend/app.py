@@ -1,4 +1,5 @@
 import base64
+import binascii
 import html
 import json
 import os
@@ -564,7 +565,7 @@ if page == "Anonimizza documento":
                 with st.spinner("Elaborazione in corso..."):
                     try:
                         r = requests.post(
-                            f"{API_URL}/anonymize",
+                            f"{API_URL}/anonymize/masked",
                             json={"image_base64": image_b64},
                             timeout=TIMEOUT,
                         )
@@ -573,24 +574,48 @@ if page == "Anonimizza documento":
                     except requests.RequestException as exc:
                         st.error(f"Errore API: {exc}")
                     else:
-                        tab1, tab2 = st.tabs(["Anonimizzato", "OCR grezzo"])
-                        with tab1:
+                        tab_img, tab_txt, tab_ocr = st.tabs(
+                            ["Immagine anonimizzata", "Anonimizzato", "OCR grezzo"]
+                        )
+                        with tab_img:
+                            masked_b64 = data.get("masked_image_base64", "")
+                            n_ent = data.get("entities_count", 0)
+                            if masked_b64:
+                                try:
+                                    masked_bytes = base64.b64decode(masked_b64)
+                                except (binascii.Error, ValueError):
+                                    masked_bytes = b""
+                                if masked_bytes:
+                                    st.image(masked_bytes, use_container_width=True)
+                                    st.caption(f"PII coperti: {n_ent}")
+                                    st.download_button(
+                                        "Scarica immagine anonimizzata (PNG)",
+                                        data=masked_bytes,
+                                        file_name="anonymized.png",
+                                        mime="image/png",
+                                        use_container_width=True,
+                                    )
+                                else:
+                                    st.warning("Immagine anonimizzata non disponibile.")
+                            else:
+                                st.warning("Immagine anonimizzata non restituita dall'API.")
+                        with tab_txt:
                             st.markdown(
                                 f'<div class="hc-text-output">'
-                                f'{_highlight_placeholders(data["anonymized_text"])}'
+                                f'{_highlight_placeholders(data.get("anonymized_text", ""))}'
                                 f"</div>",
                                 unsafe_allow_html=True,
                             )
                             st.download_button(
                                 "Scarica testo anonimizzato",
-                                data["anonymized_text"],
+                                data.get("anonymized_text", ""),
                                 file_name="anonymized.txt",
                                 use_container_width=True,
                             )
-                        with tab2:
+                        with tab_ocr:
                             st.text_area(
                                 "OCR",
-                                data["ocr_text"],
+                                data.get("ocr_text", ""),
                                 height=320,
                                 label_visibility="collapsed",
                             )
