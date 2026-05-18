@@ -1,93 +1,87 @@
 """Derive entity spans in the ORIGINAL text from an LLM-anonymized text
 that contains [PLACEHOLDER] tokens.
 
-The LLM is instructed to preserve formatting and only replace personal data
-with [LABEL] tokens. We walk both strings in parallel, anchoring on the
-unchanged segments to recover the (start, end) of each replaced span.
+Uses TOKEN-level diff (word + whitespace tokens) to avoid spurious
+character-level matches like 'D' of "Dr." matching 'D' of "[DOCTOR]".
 """
+import logging
 import re
+from difflib import SequenceMatcher
+
+logger = logging.getLogger(__name__)
 
 _PLACEHOLDER_RE = re.compile(r"\[([A-Z][A-Z0-9_]*)\]")
 
 
-def spans_from_llm_anonymized(original: str, anonymized: str) -> list[dict]:
-    """Return entities in `original` corresponding to each placeholder in `anonymized`.
+def _tokenize(s: str) -> tuple[list[str], list[tuple[int, int]]]:
+    """Split into runs of non-whitespace and runs of whitespace.
 
-    Output: list of {label, text, start, end, score} (score is always 1.0).
-    If alignment fails at some point, returns what was matched so far.
+    Returns parallel lists: tokens, and (start, end) char positions in s.
     """
-    entities: list[dict] = []
-    if not original or not anonymized:
-        return entities
-
-    orig_cursor = 0
-    anon_cursor = 0
-    placeholders = list(_PLACEHOLDER_RE.finditer(anonymized))
-    if not placeholders:
-        return entities
-
-    for idx, m in enumerate(placeholders):
-        # Segment in anonymized BEFORE this placeholder, after the previous cursor
-        pre_anon = anonymized[anon_cursor:m.start()]
-
-        # Locate pre_anon in original starting at orig_cursor.
-        # Try strict, then fall back to a whitespace-tolerant search.
-        new_orig = _find(original, pre_anon, orig_cursor)
-        if new_orig is None:
-            # alignment lost: stop
-            break
-        orig_cursor = new_orig + len(pre_anon)
-
-        # Anchor AFTER the placeholder: text in anonymized until next placeholder (or end).
-        next_start = placeholders[idx + 1].start() if idx + 1 < len(placeholders) else len(anonymized)
-        anchor = anonymized[m.end():next_start]
-
-        if anchor.strip() == "":
-            # rest of anon is whitespace or empty -> entity goes to end of original
-            ent_end = len(original)
+    tokens: list[str] = []
+    positions: list[tuple[int, int]] = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i].isspace():
+            j = i
+            while j < n and s[j].isspace():
+                j += 1
         else:
-            # Take leading non-whitespace portion of anchor (avoid trailing newlines)
-            stripped_lead = anchor.lstrip()
-            lead_skip = len(anchor) - len(stripped_lead)
-            # Use a moderate-length anchor (first 30 chars max) to be tolerant to small diffs
-            probe = stripped_lead[:30]
-            if not probe:
-                ent_end = len(original)
-            else:
-                anchor_pos = _find(original, probe, orig_cursor)
-                if anchor_pos is None:
-                    break
-                ent_end = anchor_pos - lead_skip
-                ent_end = max(ent_end, orig_cursor)  # avoid negative-length spans
+            j = i
+            while j < n and not s[j].isspace():
+                j += 1
+        tokens.append(s[i:j])
+        positions.append((i, j))
+        i = j
+    return tokens, positions
 
-        ent_start = orig_cursor
-        if ent_end > ent_start:
-            entities.append(
-                {
-                    "label": m.group(1),
-                    "text": original[ent_start:ent_end],
-                    "start": ent_start,
-                    "end": ent_end,
-                    "score": 1.0,
-                }
-            )
-        orig_cursor = ent_end
-        anon_cursor = m.end()
 
+def spans_from_llm_anonymized(original: str, anonymized: str) -> list[dict]:
+    """For each diff region whose replacement contains a [PLACEHOLDER], return
+    the corresponding (start, end) span in `original` plus the label.
+
+    Output: list of {label, text, start, end, score=1.0}, in document order.
+    """
+    if not original or not anonymized:
+        return []
+
+    o_toks, o_pos = _tokenize(original)
+    a_toks, _a_pos = _tokenize(anonymized)
+
+    sm = SequenceMatcher(a=o_toks, b=a_toks, autojunk=False)
+    entities: list[dict] = []
+
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            continue
+        if i1 == i2:
+            # pure insert in anonymized with no original span -> nothing to mask
+            continue
+        replacement_text = "".join(a_toks[j1:j2])
+        m = _PLACEHOLDER_RE.search(replacement_text)
+        if not m:
+            # diff region without any placeholder -> LLM reformatted something
+            # not classified as PII (rare). Skip.
+            continue
+        label = m.group(1)
+        start = o_pos[i1][0]
+        end = o_pos[i2 - 1][1]
+        # Trim leading/trailing whitespace from the span (avoid masking empty whitespace boxes)
+        snippet = original[start:end]
+        stripped = snippet.strip()
+        if not stripped:
+            continue
+        lead = len(snippet) - len(snippet.lstrip())
+        trail = len(snippet) - len(snippet.rstrip())
+        entities.append(
+            {
+                "label": label,
+                "text": original[start + lead:end - trail],
+                "start": start + lead,
+                "end": end - trail,
+                "score": 1.0,
+            }
+        )
+
+    logger.info("[llm_spans] derived %d spans from LLM diff", len(entities))
     return entities
-
-
-def _find(haystack: str, needle: str, start: int) -> int | None:
-    """Strict + whitespace-tolerant substring search starting at `start`."""
-    if not needle:
-        return start
-    pos = haystack.find(needle, start)
-    if pos >= 0:
-        return pos
-    # Tolerant: collapse runs of whitespace in both sides
-    needle_re = re.escape(needle)
-    needle_re = re.sub(r"(?:\\\s)+", r"\\s+", needle_re)
-    m = re.search(needle_re, haystack[start:])
-    if m:
-        return start + m.start()
-    return None
