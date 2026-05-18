@@ -3,6 +3,10 @@ from pydantic import BaseModel, Field
 
 class AnonymizeRequest(BaseModel):
     image_base64: str = Field(..., description="Document image encoded as base64 string")
+    model: str | None = Field(
+        default=None,
+        description="Anonymization model key (see /anonymize/models). If null uses the default.",
+    )
 
 
 class AnonymizeResponse(BaseModel):

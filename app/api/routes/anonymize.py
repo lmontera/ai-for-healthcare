@@ -7,11 +7,13 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.registry import (
+    ANONYMIZATION_MODELS,
+    DEFAULT_ANONYMIZATION_MODEL,
     get_anonymization_service,
+    get_anonymization_service_by_key,
     get_ocr_service,
     get_pii_detection_service,
 )
-from app.graphs.anonymize_graph import get_anonymize_graph
 from app.schemas.anonymize import (
     AnonymizeMaskedResponse,
     AnonymizeRequest,
@@ -26,6 +28,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/anonymize", tags=["anonymize"])
 
 
+def _resolve_anonymizer(model_key: str | None):
+    key = model_key or DEFAULT_ANONYMIZATION_MODEL
+    if key not in ANONYMIZATION_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"unknown model '{key}'. Valid: {list(ANONYMIZATION_MODELS.keys())}",
+        )
+    return get_anonymization_service_by_key(key), key
+
+
+@router.get("/models", status_code=status.HTTP_200_OK)
+def list_anonymization_models() -> dict:
+    return {
+        "default": DEFAULT_ANONYMIZATION_MODEL,
+        "models": [
+            {"key": k, "huggingface_name": v}
+            for k, v in ANONYMIZATION_MODELS.items()
+        ],
+    }
+
+
 @router.post("", response_model=AnonymizeResponse, status_code=status.HTTP_200_OK)
 def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
     try:
@@ -36,12 +59,14 @@ def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
             detail="image_base64 is not a valid base64 string",
         ) from exc
 
+    anonymizer, key = _resolve_anonymizer(payload.model)
+
     start_dt = datetime.now()
     t0 = time.perf_counter()
-    logger.info("[anonymize] start=%s", start_dt.strftime("%H:%M:%S"))
+    logger.info("[anonymize] start=%s model=%s", start_dt.strftime("%H:%M:%S"), key)
 
-    graph = get_anonymize_graph()
-    result = graph.invoke({"image_bytes": image_bytes})
+    ocr_text = get_ocr_service().extract_text(image_bytes)
+    anonymized_text = anonymizer.anonymize(ocr_text)
 
     logger.info(
         "[anonymize] finish=%s elapsed=%.2fs",
@@ -50,8 +75,8 @@ def anonymize_document(payload: AnonymizeRequest) -> AnonymizeResponse:
     )
 
     return AnonymizeResponse(
-        ocr_text=result["ocr_text"],
-        anonymized_text=result["anonymized_text"],
+        ocr_text=ocr_text,
+        anonymized_text=anonymized_text,
     )
 
 
@@ -86,9 +111,16 @@ def anonymize_document_masked(payload: AnonymizeRequest) -> AnonymizeMaskedRespo
             detail="image_base64 is not a valid base64 string",
         ) from exc
 
+    anonymizer, key = _resolve_anonymizer(payload.model)
+
     start_dt = datetime.now()
     t0 = time.perf_counter()
-    logger.info("[anonymize:masked] start=%s bytes=%d", start_dt.strftime("%H:%M:%S"), len(image_bytes))
+    logger.info(
+        "[anonymize:masked] start=%s bytes=%d model=%s",
+        start_dt.strftime("%H:%M:%S"),
+        len(image_bytes),
+        key,
+    )
 
     ocr = get_ocr_service()
     if not hasattr(ocr, "extract_text_and_words"):
@@ -103,7 +135,6 @@ def anonymize_document_masked(payload: AnonymizeRequest) -> AnonymizeMaskedRespo
     pii = get_pii_detection_service()
     entities = pii.detect(text)
 
-    anonymizer = get_anonymization_service()
     anonymized_text = anonymizer.anonymize(text)
 
     masked_png = mask_image_with_entities(image_bytes, words, entities)

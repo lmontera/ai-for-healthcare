@@ -542,8 +542,37 @@ def _hero(title: str, subtitle: str):
 if page == "Anonimizza documento":
     _hero(
         "Anonimizza documento",
-        "OCR (docTR) e anonimizzazione (openai/privacy-filter) su immagini di documenti clinici.",
+        "OCR (docTR) + anonimizzazione su immagini di documenti clinici. Modello selezionabile.",
     )
+
+    @st.cache_data(ttl=300)
+    def _fetch_anonymize_models():
+        try:
+            r = requests.get(f"{API_URL}/anonymize/models", timeout=10)
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException:
+            return None
+
+    models_info = _fetch_anonymize_models()
+    if models_info and models_info.get("models"):
+        model_keys = [m["key"] for m in models_info["models"]]
+        default_key = models_info.get("default", model_keys[0])
+        default_idx = model_keys.index(default_key) if default_key in model_keys else 0
+        anon_model_key = st.selectbox(
+            "Modello di anonimizzazione",
+            options=model_keys,
+            index=default_idx,
+            format_func=lambda k: next(
+                (f"{k}  ({m['huggingface_name']})" for m in models_info["models"] if m["key"] == k),
+                k,
+            ),
+            key="anon_model_key",
+            help="Cambia il modello che identifica e maschera i PII.",
+        )
+    else:
+        anon_model_key = None
+        st.warning("Non sono riuscito a caricare la lista modelli dall'API — userò il default del server.")
 
     uploaded = st.file_uploader(
         "Trascina un documento o sfoglia",
@@ -566,7 +595,7 @@ if page == "Anonimizza documento":
                     try:
                         r = requests.post(
                             f"{API_URL}/anonymize/masked",
-                            json={"image_base64": image_b64},
+                            json={"image_base64": image_b64, "model": anon_model_key},
                             timeout=TIMEOUT,
                         )
                         r.raise_for_status()
